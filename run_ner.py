@@ -55,7 +55,8 @@ from transformers import (
 )
 from model import BertForTokenClassificationWithDiceLoss
 
-from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
+from segment.utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
+# from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
 from preprocess import write_file
 
 try:
@@ -76,7 +77,7 @@ ALL_MODELS = sum(
 
 MODEL_CLASSES = {
     "albert": (AlbertConfig, AlbertForTokenClassification, AlbertTokenizer),
-    "bert": (BertConfig, BertForTokenClassificationWithDiceLoss, BertTokenizer),
+    "bert": (BertConfig, BertForTokenClassification, BertTokenizer),
     "roberta": (RobertaConfig, RobertaForTokenClassification, RobertaTokenizer),
     "distilbert": (DistilBertConfig, DistilBertForTokenClassification, DistilBertTokenizer),
     "camembert": (CamembertConfig, CamembertForTokenClassification, CamembertTokenizer),
@@ -365,11 +366,6 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     for key in sorted(results.keys()):
         logger.info("  %s = %s", key, str(results[key]))
     
-    output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
-    with open(output_eval_file, "w") as writer:
-        for key in sorted(results.keys()):
-            writer.write("{} = {}\n".format(key, str(results[key])))
-
     return results, preds_list
 
 
@@ -702,10 +698,9 @@ def main():
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
 
     # Evaluation
-    results = {}
     if args.do_eval and args.local_rank in [-1, 0]:
         tokenizer = tokenizer_class.from_pretrained(args.output_dir, **tokenizer_args)
-        checkpoints = [args.output_dir]
+        checkpoints = [os.path.join(args.output_dir, 'checkpoint-best')]
         if args.eval_all_checkpoints:
             checkpoints = list(
                 os.path.dirname(c) for c in sorted(glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True))
@@ -713,17 +708,21 @@ def main():
             logging.getLogger("pytorch_transformers.modeling_utils").setLevel(logging.WARN)  # Reduce logging
         logger.info("Evaluate the following checkpoints: %s", checkpoints)
         for checkpoint in checkpoints:
-            global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             model = model_class.from_pretrained(checkpoint)
             model.to(args.device)
-            result, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=global_step)
-            if global_step:
-                result = {"{}_{}".format(global_step, k): v for k, v in result.items()}
-            results.update(result)
-        # output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
-        # with open(output_eval_file, "w") as writer:
-        #     for key in sorted(results.keys()):
-        #         writer.write("{} = {}\n".format(key, str(results[key])))
+            result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=global_step)
+            # Save results
+            output_eval_results_file = os.path.join(checkpoint, "eval_results.txt")
+            with open(output_eval_results_file, "w") as writer:
+                for key in sorted(result.keys()):
+                    writer.write("{} = {}\n".format(key, str(result[key])))
+            # Save predictions
+            output_eval_predictions_file = os.path.join(checkpoint, "eval_predictions.json")
+            results = []
+            for prediction in predictions:
+                results.append({'labels':prediction})
+            write_file(results, output_eval_predictions_file)  
+
 
     if args.do_predict and args.local_rank in [-1, 0]:
         tokenizer = tokenizer_class.from_pretrained(args.output_dir, **tokenizer_args)
@@ -732,12 +731,12 @@ def main():
         model.to(args.device)
         result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
         # Save results
-        output_test_results_file = os.path.join(args.output_dir, "test_results.txt")
+        output_test_results_file = os.path.join(checkpoint, "test_results.txt")
         with open(output_test_results_file, "w") as writer:
             for key in sorted(result.keys()):
                 writer.write("{} = {}\n".format(key, str(result[key])))
         # Save predictions
-        output_test_predictions_file = os.path.join(args.output_dir, "test_predictions.json")
+        output_test_predictions_file = os.path.join(checkpoint, "test_predictions.json")
         results = []
         for prediction in predictions:
             results.append({'labels':prediction})

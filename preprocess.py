@@ -50,20 +50,132 @@ def role_process(input_file, output_file, is_predict=False):
         results.append({"id":row["id"], "tokens":list(row["text"]), "labels":labels})
     write_file(results,output_file)
 
-def role_val(input_file):
+def trigger_role_process(input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
-    count = 0
+    results = []
     for row in rows:
         if len(row)==1: print(row)
         row = json.loads(row)
-        event_class = ""
+        if len(list(row["text"]))!= len(row["text"]):
+            print("list and text mismatched")
+        labels = ['O']*len(row["text"])
+        if is_predict: 
+            results.append({"id":row["id"], "tokens":list(row["text"]), "labels":labels})
+            continue
         for event in row["event_list"]:
-            cur_class = event["class"]
-            if not event_class: event_class=cur_class
-            elif event_class!=cur_class:
-                print(row)
-                count += 1
-    print(count)
+            event_type = event["event_type"]
+            event_class = event["event_classs"]
+            trigger = event["trigger"]
+            trigger_start_index = event["trigger_start_index"]
+            segment_ids= [0] * len(row["text"])
+            for i in range(trigger_start_index, trigger_start_index+ len(trigger) ):
+                segment_ids[i] = 1
+
+            for arg in event["arguments"]:
+                role = arg['role']
+                argument = arg['argument']
+                argument_start_index = arg["argument_start_index"]
+                labels[argument_start_index]= "B-{}".format(role)
+                for i in range(1, len(argument)):
+                    labels[argument_start_index+i]= "I-{}".format(role)
+                if arg['alias']!=[]: print(arg['alias'])
+            
+            results.append({"id":row["id"], "event_class":event_class, "event_type":event_type, "segment_ids":segment_ids,\
+                 "tokens":list(row["text"]), "labels":labels})
+    write_file(results,output_file)
+
+
+def data_val(input_file):
+    rows = open(input_file, encoding='utf-8').read().splitlines()
+
+    event_class_count = 0
+    role_count = 0
+    arg_count = 0
+
+    for row in rows:
+        if len(row)==1: print(row)
+        row = json.loads(row)
+
+        arg_start_index_list=[]
+        event_class_list = []
+
+        event_class_flag = False
+        arg_start_index_flag= False
+        role_flag = False
+
+        for event in row["event_list"]:
+            event_class = event["class"]
+            if event_class_list==[]: 
+                event_class_list.append(event_class)
+            elif event_class not in event_class_list:
+                # event_class_count += 1
+                event_class_flag = True
+                # print(row)
+
+            role_list = []
+            for arg in  event["arguments"]:
+                role = arg['role']
+                argument = arg['argument']
+                argument_start_index = arg["argument_start_index"]
+                if role not in role_list:
+                    role_list.append(role)
+                else: 
+                    # role_count += 1
+                    arg_start_index_flag = True
+                    # print(row)
+
+                if argument_start_index not in arg_start_index_list:
+                    arg_start_index_list.append(argument_start_index)
+                else: 
+                    # arg_count+= 1
+                    role_flag = True
+                    # print(row)
+    
+        if role_flag:
+            role_count += 1
+            # print(row)
+        if event_class_flag:
+            event_class_count += 1
+            # print(row)
+        if arg_start_index_flag:
+            arg_count += 1
+            # print(row)
+
+    print(event_class_count, role_count, arg_count)
+
+def position_val(input_file):
+    rows = open(input_file, encoding='utf-8').read().splitlines()
+    trigger_count = 0
+    arg_count = 0
+
+    for row in rows:
+        # position_flag = False
+
+        if len(row)==1: print(row)
+        row = json.loads(row)
+        text = row['text']
+        for event in row["event_list"]:
+            event_class = event["class"]
+            trigger = event["trigger"]
+            event_type = event["event_type"]
+            trigger_start_index = event["trigger_start_index"]
+
+            if text[trigger_start_index: trigger_start_index+len(trigger)]!= trigger:
+                print("trigger position mismatch")
+                trigger_count += 1
+
+            for arg in  event["arguments"]:
+                role = arg['role']
+                argument = arg['argument']
+                argument_start_index = arg["argument_start_index"]
+                
+                if text[argument_start_index: argument_start_index+len(argument)]!= argument:
+                    print("argument position mismatch")
+                    arg_count+=1
+    
+    print(trigger_count, arg_count)
+            
+
 
 def role_process_filter(event_class, input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
@@ -140,8 +252,17 @@ if __name__ == '__main__':
     # role_process("./data/dev_data/dev.json","./data/role/dev.json")
     # role_process("./data/test1_data/test1.json", "./data/role/test.json",is_predict=True)
 
-    role_val("./data/train_data/train.json")
-    # role_val("./data/dev_data/dev.json")
+    trigger_role_process("./data/train_data/train.json", "./data/trigger_role/train.json")
+    trigger_role_process("./data/dev_data/dev.json","./data/trigger_role/dev.json")
+    trigger_role_process("./data/test1_data/test1.json", "./data/trigger_role/test.json",is_predict=True)
+
+    # data_val("./data/train_data/train.json")
+    # data_val("./data/dev_data/dev.json")
+
+    # 无异常
+    # position_val("./data/train_data/train.json")
+    # position_val("./data/dev_data/dev.json")
+
 
     # event_class_list = get_event_class("./data/event_schema/event_schema.json")
     # for event_class in event_class_list:

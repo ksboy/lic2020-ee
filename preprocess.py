@@ -53,9 +53,11 @@ def role_process(input_file, output_file, is_predict=False):
 def trigger_role_process(input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
     results = []
+    len_text = []
     for row in rows:
         if len(row)==1: print(row)
         row = json.loads(row)
+        len_text.append(len(row["text"]))
         if len(list(row["text"]))!= len(row["text"]):
             print("list and text mismatched")
         labels = ['O']*len(row["text"])
@@ -64,7 +66,6 @@ def trigger_role_process(input_file, output_file, is_predict=False):
             continue
         for event in row["event_list"]:
             event_type = event["event_type"]
-            event_class = event["event_classs"]
             trigger = event["trigger"]
             trigger_start_index = event["trigger_start_index"]
             segment_ids= [0] * len(row["text"])
@@ -80,9 +81,10 @@ def trigger_role_process(input_file, output_file, is_predict=False):
                     labels[argument_start_index+i]= "I-{}".format(role)
                 if arg['alias']!=[]: print(arg['alias'])
             
-            results.append({"id":row["id"], "event_class":event_class, "event_type":event_type, "segment_ids":segment_ids,\
+            results.append({"id":row["id"],  "event_type":event_type, "segment_ids":segment_ids,\
                  "tokens":list(row["text"]), "labels":labels})
     write_file(results,output_file)
+    print(min(len_text), max(len_text), mean(len_text))
 
 
 def data_val(input_file):

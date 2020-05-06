@@ -6,14 +6,14 @@ SCHEMA=./data/event_schema/event_schema.json
 OUTPUT_DIR=./output/role_trigger_384/
 BATCH_SIZE=4
 EVAL_BATCH_SIZE=64
-NUM_EPOCHS=10
+NUM_EPOCHS=20
 SAVE_STEPS=300
 # SAVE_STEPS= $save_steps* gradient_accumulation_steps * batch_size * num_gpus
 WARMUP_STEPS=1000
 SEED=1
 LR=3e-5
 
-CUDA_VISIBLE_DEVICES=0,1 python3 run_ner.py \
+CUDA_VISIBLE_DEVICES=1,0,2,3 python3 run_ner.py \
 --task $TASK \
 --model_type bert \
 --model_name_or_path $MODEL \
@@ -22,7 +22,6 @@ CUDA_VISIBLE_DEVICES=0,1 python3 run_ner.py \
 --evaluate_during_training \
 --eval_all_checkpoints \
 --data_dir $DATA_DIR \
---overwrite_cache \
 --schema $SCHEMA \
 --output_dir $OUTPUT_DIR \
 --overwrite_output_dir \

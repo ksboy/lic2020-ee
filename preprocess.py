@@ -27,6 +27,27 @@ def trigger_process(input_file, output_file, is_predict=False):
         results.append({"id":row["id"], "tokens":list(row["text"]), "labels":labels})
     write_file(results,output_file)
 
+def trigger_process_binary(input_file, output_file, is_predict=False):
+    rows = open(input_file, encoding='utf-8').read().splitlines()
+    results = []
+    for row in rows:
+        if len(row)==1: print(row)
+        row = json.loads(row)
+        start_labels = ['O']*len(row["text"])
+        end_labels = ['O']*len(row["text"])
+        if is_predict: 
+            results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels})
+            continue
+        for event in row["event_list"]:
+            trigger = event["trigger"]
+            event_type = event["event_type"]
+            trigger_start_index = event["trigger_start_index"]
+            trigger_end_index = trigger_start_index + len(trigger) - 1
+            start_labels[trigger_start_index]= event_type
+            end_labels[trigger_end_index]= event_type
+        results.append({"id":row["id"], "tokens":list(row["text"]),  "start_labels":start_labels, "end_labels":end_labels})
+    write_file(results,output_file)
+
 def role_process(input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
     results = []
@@ -48,6 +69,30 @@ def role_process(input_file, output_file, is_predict=False):
                     labels[argument_start_index+i]= "I-{}".format(role)
                 if arg['alias']!=[]: print(arg['alias'])
         results.append({"id":row["id"], "tokens":list(row["text"]), "labels":labels})
+    write_file(results,output_file)
+
+def role_process_binary(input_file, output_file, is_predict=False):
+    rows = open(input_file, encoding='utf-8').read().splitlines()
+    results = []
+    for row in rows:
+        if len(row)==1: print(row)
+        row = json.loads(row)
+        start_labels = ['O']*len(row["text"])
+        end_labels = ['O']*len(row["text"])
+        if is_predict: 
+            results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels})
+            continue
+        for event in row["event_list"]:
+            event_type = event["event_type"]
+            for arg in event["arguments"]:
+                role = arg['role']
+                argument = arg['argument']
+                argument_start_index = arg["argument_start_index"]
+                argument_end_index = argument_start_index + len(argument) -1
+                start_labels[argument_start_index]= role
+                end_labels[argument_end_index]= role
+                if arg['alias']!=[]: print(arg['alias'])
+        results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels})
     write_file(results,output_file)
 
 def trigger_role_process(input_file, output_file, is_predict=False):
@@ -237,26 +282,28 @@ def read_write(input_file, output_file):
         row = json.loads(row)
         id = row.pop('id')
         text = row.pop('text')
-        labels = row.pop('labels')
-        row['id'] = id
-        row['labels'] = labels
+        # labels = row.pop('labels')
+        event_list = row.pop('event_list')
         row['text'] = text
+        row['id'] = id
+        # row['labels'] = labels
+        row['event_list'] = event_list
         results.append(row)
     write_file(results, output_file)
 
 
 if __name__ == '__main__':
-    # trigger_process("./data/train_data/train.json", "./data/trigger/train.json")
-    # trigger_process("./data/dev_data/dev.json","./data/trigger/dev.json")
-    # trigger_process("./data/test1_data/test1.json", "./data/trigger/test.json",is_predict=True)
+    # trigger_process_binary("./data/train_data/train.json", "./data/trigger_bin/train.json")
+    # trigger_process_binary("./data/dev_data/dev.json","./data/trigger_bin/dev.json")
+    # trigger_process_binary("./data/test1_data/test1.json", "./data/trigger_bin/test.json",is_predict=True)
 
-    # role_process("./data/train_data/train.json", "./data/role/train.json")
-    # role_process("./data/dev_data/dev.json","./data/role/dev.json")
-    # role_process("./data/test1_data/test1.json", "./data/role/test.json",is_predict=True)
+    # role_process_binary("./data/train_data/train.json", "./data/role_bin/train.json")
+    # role_process_binary("./data/dev_data/dev.json","./data/role_bin/dev.json")
+    # role_process_binary("./data/test1_data/test1.json", "./data/role_bin/test.json",is_predict=True)
 
-    trigger_role_process("./data/train_data/train.json", "./data/trigger_role/train.json")
-    trigger_role_process("./data/dev_data/dev.json","./data/trigger_role/dev.json")
-    trigger_role_process("./data/test1_data/test1.json", "./data/trigger_role/test.json",is_predict=True)
+    # trigger_role_process("./data/train_data/train.json", "./data/trigger_role/train.json")
+    # trigger_role_process("./data/dev_data/dev.json","./data/trigger_role/dev.json")
+    # trigger_role_process("./data/test1_data/test1.json", "./data/trigger_role/test.json",is_predict=True)
 
     # data_val("./data/train_data/train.json")
     # data_val("./data/dev_data/dev.json")
@@ -273,9 +320,9 @@ if __name__ == '__main__':
     #     role_process_filter(event_class, "./data/train_data/train.json", "./data/role/{}/train.json".format(event_class))
     #     role_process_filter(event_class, "./data/dev_data/dev.json","./data/role/{}/dev.json".format(event_class))
 
-    # index_output("./data/role/test.json" , "./output/role/test_predictions.json","./output/role/test_predictions_indexed.json" )
-    # index_output("./data/trigger/test.json" , "./output/trigger/test_predictions.json","./output/trigger/test_predictions_indexed.json" )
+    # index_output("./data/role/dev.json" , "./output/role/eval_predictions.json","./output/role/eval_predictions_indexed.json" )
+    # index_output("./data/trigger/dev.json" , "./output/trigger/eval_predictions.json","./output/trigger/eval_predictions_indexed.json" )
 
-    # read_write("./results/test1.role.pred.json", "./results/paddle.role.json")
+    read_write("./output/eval_pred.json", "./results/eval_pred.json")
     # read_write("./results/test1.trigger.pred.json", "./results/paddle.trigger.json")
 

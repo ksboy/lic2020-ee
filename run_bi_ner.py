@@ -53,9 +53,9 @@ from transformers import (
     XLMRobertaTokenizer,
     get_linear_schedule_with_warmup,
 )
-from model import BertForTokenClassificationWithDiceLoss, BertForTokenClassificationWithTrigger
+from model import BertForTokenClassificationWithDiceLoss, BertForTokenClassificationWithTrigger, BertForTokenBinaryClassification
 
-from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
+from utils_bi_ner import convert_examples_to_features, get_labels, read_examples_from_file
 # from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
 from preprocess import write_file
 
@@ -77,7 +77,7 @@ ALL_MODELS = sum(
 
 MODEL_CLASSES = {
     "albert": (AlbertConfig, AlbertForTokenClassification, AlbertTokenizer),
-    "bert": (BertConfig, BertForTokenClassification, BertTokenizer),
+    "bert": (BertConfig, BertForTokenBinaryClassification, BertTokenizer),
     "roberta": (RobertaConfig, RobertaForTokenClassification, RobertaTokenizer),
     "distilbert": (DistilBertConfig, DistilBertForTokenClassification, DistilBertTokenizer),
     "camembert": (CamembertConfig, CamembertForTokenClassification, CamembertTokenizer),
@@ -202,7 +202,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
 
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "start_labels": batch[3], "end_labels": batch[4]}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet"] else None
@@ -315,43 +315,53 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     logger.info("  Batch size = %d", args.eval_batch_size)
     eval_loss = 0.0
     nb_eval_steps = 0
-    preds = None
-    out_label_ids = None
+    start_preds = None
     model.eval()
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
         batch = tuple(t.to(args.device) for t in batch)
 
         with torch.no_grad():
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "start_labels": batch[3], "end_labels": batch[4]}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet"] else None
                 )  # XLM and RoBERTa don"t use segment_ids
             outputs = model(**inputs)
-            tmp_eval_loss, logits = outputs[:2]
+            tmp_eval_loss, (start_logits, end_logits) = outputs[:2]
 
             if args.n_gpu > 1:
                 tmp_eval_loss = tmp_eval_loss.mean()  # mean() to average on multi-gpu parallel evaluating
 
             eval_loss += tmp_eval_loss.item()
         nb_eval_steps += 1
-        if preds is None:
-            preds = logits.detach().cpu().numpy()
-            out_label_ids = inputs["labels"].detach().cpu().numpy()
+        if start_preds is None:
+            start_preds = start_logits.detach().cpu().numpy()
+            start_out_label_ids = inputs["start_labels"].detach().cpu().numpy()
+            end_preds = end_logits.detach().cpu().numpy()
+            end_out_label_ids = inputs["end_labels"].detach().cpu().numpy()
         else:
-            preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-            out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+            start_preds = np.append(start_preds, start_logits.detach().cpu().numpy(), axis=0)
+            start_out_label_ids = np.append(start_out_label_ids, inputs["start_labels"].detach().cpu().numpy(), axis=0)
+            end_preds = np.append(end_preds, end_logits.detach().cpu().numpy(), axis=0)
+            end_out_label_ids = np.append(end_out_label_ids, inputs["end_labels"].detach().cpu().numpy(), axis=0)
 
     eval_loss = eval_loss / nb_eval_steps
-    preds = np.argmax(preds, axis=2)
+
+    def sigmoid(x):
+        s = 1 / (1 + np.exp(-x))
+        return s
+
+    threshold = 0.5
+    start_preds = sigmoid(start_preds)> threshold
+    end_preds = sigmoid(end_preds) > threshold
 
     label_map = {i: label for i, label in enumerate(labels)}
 
-    out_label_list = [[] for _ in range(out_label_ids.shape[0])]
-    preds_list = [[] for _ in range(out_label_ids.shape[0])]
+    out_label_list = [[] for _ in range(start_out_label_ids.shape[0])]
+    preds_list = [[] for _ in range(start_out_label_ids.shape[0])]
 
-    for i in range(out_label_ids.shape[0]):
-        for j in range(out_label_ids.shape[1]):
+    for i in range(start_out_label_ids.shape[0]):
+        for j in range(start_out_label_ids.shape[1]):
             if out_label_ids[i, j] != pad_token_label_id:
                 out_label_list[i].append(label_map[out_label_ids[i][j]])
                 preds_list[i].append(label_map[preds[i][j]])
@@ -416,9 +426,10 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
-    all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
+    all_start_label_ids = torch.tensor([f.start_label_ids for f in features], dtype=torch.long)
+    all_end_label_ids = torch.tensor([f.end_label_ids for f in features], dtype=torch.long)
 
-    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_start_label_ids, all_end_label_ids)
     return dataset
 
 
@@ -623,10 +634,11 @@ def main():
     set_seed(args)
 
     # Prepare CONLL-2003 task
-    labels = get_labels(args.schema, task=args.task)
+    labels = get_labels(args.schema, task=args.task, mode="classification")
     num_labels = len(labels)
     # Use cross entropy ignore index as padding label id so that only real label ids contribute to the loss later
-    pad_token_label_id = CrossEntropyLoss().ignore_index
+    ignore_index = -100
+    pad_token_label_id = ignore_index
 
     # Load pretrained model and tokenizer
     if args.local_rank not in [-1, 0]:

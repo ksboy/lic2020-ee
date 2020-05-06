@@ -336,15 +336,15 @@ class BertForTokenClassificationJoint(BertPreTrainedModel):
         return outputs  # (loss), scores, (hidden_states), (attentions)
 
 
-class BertForTokenBiClassification(BertPreTrainedModel):
+class BertForTokenBinaryClassification(BertPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
 
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.start_classifier = nn.Linear(config.hidden_size, 1)
-        self.end_classifier = nn.Linear(config.hidden_size, 1)
+        self.start_classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.end_classifier = nn.Linear(config.hidden_size, config.num_labels)
 
         self.init_weights()
 
@@ -357,7 +357,8 @@ class BertForTokenBiClassification(BertPreTrainedModel):
         position_ids=None,
         head_mask=None,
         inputs_embeds=None,
-        labels=None,
+        start_labels=None,
+        end_labels=None,
     ):
         r"""
         labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
@@ -415,27 +416,62 @@ class BertForTokenBiClassification(BertPreTrainedModel):
         end_logits = self.end_classifier(sequence_output)
 
         outputs = ([start_logits, end_logits],) + outputs[2:]  # add hidden states and attention if they are here
-        if labels is not None:
-            
+        if start_labels is not None and end_labels is not None:
             # loss_fct = CrossEntropyLoss()
             # loss_fct = FocalLoss(class_num=self.num_labels)
-            loss_fct = FocalLoss(ignore_index=-100)
+            loss_fct = BCEWithLogitsLoss(reduction="none")
             # Only keep active parts of the loss
             if attention_mask is not None:
                 active_loss = attention_mask.view(-1) == 1
-                active_logits = logits.view(-1, self.num_labels)
-                active_labels = torch.where(
-                    active_loss, labels.view(-1), torch.tensor(loss_fct.ignore_index).type_as(labels)
+                active_start_logits = start_logits.view(-1, self.num_labels)
+                active_end_logits = end_logits.view(-1, self.num_labels)
+                tmp_index= 0
+                ignore_index= -100
+                non_index= -1
+                active_start_labels = start_labels.view(-1)
+                active_end_labels = end_labels.view(-1)
+                # attention_mask: 
+                # ignore_index: [cls], [sep]
+                # non_index: no label
+                active_start_non = active_start_labels != non_index
+                active_start_extra = active_start_labels != ignore_index
+                active_start = active_start_non * active_start_extra
+                active_end_non = active_end_labels != non_index
+                active_end_extra = active_end_labels != ignore_index
+                active_end = active_end_non * active_end_extra
+
+                active_start_labels = torch.where(active_start,\
+                         active_start_labels, torch.tensor(tmp_index).type_as(start_labels)
                 )
+                active_end_labels = torch.where(active_end, \
+                        active_end_labels, torch.tensor(tmp_index).type_as(end_labels)
+                )
+                # one hot
+                active_start_labels = F.one_hot(active_start_labels, num_classes=self.num_labels)
+                active_end_labels = F.one_hot(active_end_labels, num_classes=self.num_labels)
+                # 改变 one hot
+                active_start_labels = active_start_labels * (active_start.unsqueeze(-1))
+                active_end_labels = active_end_labels * (active_end.unsqueeze(-1))
+
+                
                 # print(active_loss, active_loss.shape, \
                 #      active_logits,active_logits.shape,\
                 #      active_labels,active_labels.shape,\
                 #      labels, labels.shape)
                 #2048 2048*435 2048 8*256 
-                loss = loss_fct(active_logits, active_labels)
+                start_loss = loss_fct(active_start_logits, active_start_labels.float())
+                start_loss = start_loss * (active_start_extra.unsqueeze(-1))
+                start_loss = torch.sum(start_loss)/torch.sum(active_start_extra)
+
+                end_loss = loss_fct(active_end_logits, active_end_labels.float())
+                end_loss = end_loss * (active_end_extra.unsqueeze(-1))
+                end_loss = torch.sum(end_loss)/torch.sum(active_end_extra)
+
+
             else:
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            outputs = (loss,) + outputs
+                start_loss = loss_fct(start_logits.view(-1, self.num_labels), start_labels.view(-1))
+                end_loss = loss_fct(end_logits.view(-1, self.num_labels), end_labels.view(-1))
+            outputs = (start_loss+ end_loss,) + outputs
 
         return outputs  # (loss), scores, (hidden_states), (attentions)
 

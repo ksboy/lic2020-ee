@@ -24,7 +24,7 @@ import random
 
 import numpy as np
 import torch
-from seqeval.metrics import f1_score, precision_score, recall_score
+# from seqeval.metrics import f1_score, precision_score, recall_score
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
@@ -55,7 +55,7 @@ from transformers import (
 )
 from model import BertForTokenClassificationWithDiceLoss, BertForTokenClassificationWithTrigger, BertForTokenBinaryClassification
 
-from utils_bi_ner import convert_examples_to_features, get_labels, read_examples_from_file
+from utils_bi_ner import convert_examples_to_features, get_labels, read_examples_from_file, convert_label_ids_to_onehot
 # from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
 from preprocess import write_file
 
@@ -190,8 +190,8 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
 
     best_metric = 0 
     patience =0
-    for _ in train_iterator:
-        print(_, "epoch")
+    for iteration_index in train_iterator:
+        print("{} epoch".format(iteration_index))
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
 
@@ -235,7 +235,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                 model.zero_grad()
                 global_step += 1
 
-                if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
+                if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0  and iteration_index> 1:
                     # Log metrics
                     if (
                         args.local_rank == -1 and args.evaluate_during_training
@@ -335,11 +335,13 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
             eval_loss += tmp_eval_loss.item()
         nb_eval_steps += 1
         if start_preds is None:
+            attention_mask = inputs["attention_mask"].detach().cpu().numpy()
             start_preds = start_logits.detach().cpu().numpy()
             start_out_label_ids = inputs["start_labels"].detach().cpu().numpy()
             end_preds = end_logits.detach().cpu().numpy()
             end_out_label_ids = inputs["end_labels"].detach().cpu().numpy()
         else:
+            attention_mask = np.append(attention_mask, inputs["attention_mask"].detach().cpu().numpy(), axis=0)
             start_preds = np.append(start_preds, start_logits.detach().cpu().numpy(), axis=0)
             start_out_label_ids = np.append(start_out_label_ids, inputs["start_labels"].detach().cpu().numpy(), axis=0)
             end_preds = np.append(end_preds, end_logits.detach().cpu().numpy(), axis=0)
@@ -352,25 +354,61 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         return s
 
     threshold = 0.5
-    start_preds = sigmoid(start_preds)> threshold
+    start_preds = sigmoid(start_preds)> threshold # 1498*256*217
     end_preds = sigmoid(end_preds) > threshold
 
     label_map = {i: label for i, label in enumerate(labels)}
 
-    out_label_list = [[] for _ in range(start_out_label_ids.shape[0])]
-    preds_list = [[] for _ in range(start_out_label_ids.shape[0])]
+    # 1498*256*217
+    batch_size, seq_length, num_labels=  start_out_label_ids.shape
+    
+    out_label_list = []
+    preds_list = []
+    
+    dis = 160
+    # labels
+    for i in trange(batch_size):   # batch_index
+        for j in range(seq_length):  # token_index 
+            if not attention_mask[i, j]: continue
+            # 实体 头
+            for k in range(num_labels):  
+                if start_out_label_ids[i][j][k]:
+                    # 寻找 实体尾 
+                    for l in range(j, min(j+ dis, seq_length)):
+                        if end_out_label_ids[i][l][k]:
+                            out_label_list.append((i, j, l, k)) # batch, start, end, label
+                            break
+    print(out_label_list[:10])
+    # preds
+    for i in trange(batch_size):   # batch_index
+        for j in range(seq_length):  # token_index 
+            # 实体 头
+            if not attention_mask[i, j]: continue
+            # 寻找 实体尾 
+            for k in range(num_labels):  
+                if start_preds[i][j][k]:
+                    for l in range(j, min(j+ dis, seq_length)):
+                        if end_preds[i][l][k]:
+                            preds_list.append((i, j, l, k)) # start, end, label
+                            break
+    print(preds_list[:10])
+    nb_correct  = 0
+    for out_label in out_label_list:
+        for pred in preds_list:
+            if out_label==pred:
+                nb_correct+=1
+    nb_pred = len(preds_list)
+    nb_true = len(out_label_list)
 
-    for i in range(start_out_label_ids.shape[0]):
-        for j in range(start_out_label_ids.shape[1]):
-            if out_label_ids[i, j] != pad_token_label_id:
-                out_label_list[i].append(label_map[out_label_ids[i][j]])
-                preds_list[i].append(label_map[preds[i][j]])
+    p = nb_correct / nb_pred if nb_pred > 0 else 0
+    r = nb_correct / nb_true if nb_true > 0 else 0
+    f1 = 2 * p * r / (p + r) if p + r > 0 else 0
 
     results = {
         "loss": eval_loss,
-        "precision": precision_score(out_label_list, preds_list),
-        "recall": recall_score(out_label_list, preds_list),
-        "f1": f1_score(out_label_list, preds_list),
+        "precision":  p,
+        "recall": r,
+        "f1": f1,
     }
 
     logger.info("***** Eval results %s *****", prefix)
@@ -426,8 +464,8 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
-    all_start_label_ids = torch.tensor([f.start_label_ids for f in features], dtype=torch.long)
-    all_end_label_ids = torch.tensor([f.end_label_ids for f in features], dtype=torch.long)
+    all_start_label_ids = torch.tensor([convert_label_ids_to_onehot(f.start_label_ids) for f in features], dtype=torch.int)
+    all_end_label_ids = torch.tensor([convert_label_ids_to_onehot(f.end_label_ids) for f in features], dtype=torch.int)
 
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_start_label_ids, all_end_label_ids)
     return dataset

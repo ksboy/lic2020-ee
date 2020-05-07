@@ -1,5 +1,6 @@
 import json
 import os
+from utils_bi_ner import get_labels
 
 def write_file(datas, output_file):
     with open(output_file, 'w', encoding='utf-8') as f:
@@ -72,13 +73,15 @@ def role_process(input_file, output_file, is_predict=False):
     write_file(results,output_file)
 
 def role_process_binary(input_file, output_file, is_predict=False):
+    label_list = get_labels(task= "role", mode="classification")
+    label_map = {label: i for i, label in enumerate(label_list)}
     rows = open(input_file, encoding='utf-8').read().splitlines()
     results = []
     for row in rows:
         if len(row)==1: print(row)
         row = json.loads(row)
-        start_labels = ['O']*len(row["text"])
-        end_labels = ['O']*len(row["text"])
+        start_labels = ['O']*len(row["text"]) 
+        end_labels = ['O']*len(row["text"]) 
         if is_predict: 
             results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels})
             continue
@@ -86,11 +89,20 @@ def role_process_binary(input_file, output_file, is_predict=False):
             event_type = event["event_type"]
             for arg in event["arguments"]:
                 role = arg['role']
+                role_id = label_map[role]
                 argument = arg['argument']
                 argument_start_index = arg["argument_start_index"]
                 argument_end_index = argument_start_index + len(argument) -1
-                start_labels[argument_start_index]= role
-                end_labels[argument_end_index]= role
+
+                if start_labels[argument_start_index]=="O":
+                    start_labels[argument_start_index] = role
+                else: 
+                    start_labels[argument_start_index] += (" "+ role)
+                if end_labels[argument_end_index]=="O":
+                    end_labels[argument_end_index] = role
+                else: 
+                    end_labels[argument_end_index] += (" "+ role)
+
                 if arg['alias']!=[]: print(arg['alias'])
         results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels})
     write_file(results,output_file)
@@ -138,17 +150,21 @@ def data_val(input_file):
     event_class_count = 0
     role_count = 0
     arg_count = 0
+    arg_role_count = 0
+    argument_len_list =[]
 
     for row in rows:
         if len(row)==1: print(row)
         row = json.loads(row)
 
         arg_start_index_list=[]
+        arg_start_index_map={}
         event_class_list = []
 
         event_class_flag = False
         arg_start_index_flag= False
         role_flag = False
+        arg_role_flag= False
 
         for event in row["event_list"]:
             event_class = event["class"]
@@ -164,6 +180,7 @@ def data_val(input_file):
                 role = arg['role']
                 argument = arg['argument']
                 argument_start_index = arg["argument_start_index"]
+                argument_len_list.append([len(argument),argument])
                 if role not in role_list:
                     role_list.append(role)
                 else: 
@@ -173,10 +190,13 @@ def data_val(input_file):
 
                 if argument_start_index not in arg_start_index_list:
                     arg_start_index_list.append(argument_start_index)
+                    arg_start_index_map[argument_start_index]= role
                 else: 
                     # arg_count+= 1
                     role_flag = True
-                    # print(row)
+                    if role!= arg_start_index_map[argument_start_index]:
+                        arg_role_flag = True
+                        # print(row)
     
         if role_flag:
             role_count += 1
@@ -187,8 +207,12 @@ def data_val(input_file):
         if arg_start_index_flag:
             arg_count += 1
             # print(row)
-
-    print(event_class_count, role_count, arg_count)
+        if arg_role_flag:
+            arg_role_count += 1
+    
+    print(event_class_count, role_count, arg_count, arg_role_count)
+    argument_len_list.sort(key=lambda x:x[0], reverse= True)
+    print(argument_len_list[:10])
 
 def position_val(input_file):
     rows = open(input_file, encoding='utf-8').read().splitlines()
@@ -305,8 +329,8 @@ if __name__ == '__main__':
     # trigger_role_process("./data/dev_data/dev.json","./data/trigger_role/dev.json")
     # trigger_role_process("./data/test1_data/test1.json", "./data/trigger_role/test.json",is_predict=True)
 
-    # data_val("./data/train_data/train.json")
-    # data_val("./data/dev_data/dev.json")
+    data_val("./data/train_data/train.json")
+    data_val("./data/dev_data/dev.json")
 
     # 无异常
     # position_val("./data/train_data/train.json")
@@ -323,6 +347,6 @@ if __name__ == '__main__':
     # index_output("./data/role/dev.json" , "./output/role/eval_predictions.json","./output/role/eval_predictions_indexed.json" )
     # index_output("./data/trigger/dev.json" , "./output/trigger/eval_predictions.json","./output/trigger/eval_predictions_indexed.json" )
 
-    read_write("./output/eval_pred.json", "./results/eval_pred.json")
+    # read_write("./output/eval_pred.json", "./results/eval_pred.json")
     # read_write("./results/test1.trigger.pred.json", "./results/paddle.trigger.json")
 

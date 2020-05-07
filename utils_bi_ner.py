@@ -127,8 +127,18 @@ def convert_examples_to_features(
             if len(word_tokens)>1: print(word)
             if len(word_tokens)<1: continue
             # Use the real label id for the first token of the word, and padding ids for the remaining tokens
-            start_label_ids.extend([label_map[start_label]] + [pad_token_label_id] * (len(word_tokens) - 1))
-            end_label_ids.extend([label_map[end_label]] + [pad_token_label_id] * (len(word_tokens) - 1))
+            cur_start_labels = start_label.split()
+            cur_start_label_ids = []
+            for cur_start_label in cur_start_labels:
+                cur_start_label_ids.append(label_map[cur_start_label])
+            start_label_ids.append(cur_start_label_ids)
+
+            cur_end_labels = end_label.split()
+            cur_end_label_ids = []
+            for cur_end_label in cur_end_labels:
+                cur_end_label_ids.append(label_map[cur_end_label])
+            end_label_ids.append(cur_end_label_ids)
+
             # if len(tokens)!= len(label_ids):
             #     print(word, word_tokens, tokens, label_ids)
         # print(len(tokens),len(label_ids))
@@ -160,25 +170,25 @@ def convert_examples_to_features(
         # used as as the "sentence vector". Note that this only makes sense because
         # the entire model is fine-tuned.
         tokens += [sep_token]
-        start_label_ids += [pad_token_label_id]
-        end_label_ids += [pad_token_label_id]
+        start_label_ids += [[pad_token_label_id]]
+        end_label_ids += [[pad_token_label_id]]
 
         if sep_token_extra:
             # roberta uses an extra separator b/w pairs of sentences
             tokens += [sep_token]
-            start_label_ids += [pad_token_label_id]
-            end_label_ids += [pad_token_label_id]
+            start_label_ids += [[pad_token_label_id]]
+            end_label_ids += [[pad_token_label_id]]
         segment_ids = [sequence_a_segment_id] * len(tokens)
 
         if cls_token_at_end:
             tokens += [cls_token]
-            start_label_ids += [pad_token_label_id]
-            end_label_ids += [pad_token_label_id]
+            start_label_ids += [[pad_token_label_id]]
+            end_label_ids += [[pad_token_label_id]]
             segment_ids += [cls_token_segment_id]
         else:
             tokens = [cls_token] + tokens
-            start_label_ids = [pad_token_label_id] + start_label_ids
-            end_label_ids = [pad_token_label_id] + end_label_ids
+            start_label_ids = [[pad_token_label_id]] + start_label_ids
+            end_label_ids = [[pad_token_label_id]] + end_label_ids
             segment_ids = [cls_token_segment_id] + segment_ids
 
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
@@ -194,14 +204,14 @@ def convert_examples_to_features(
             input_ids = ([pad_token] * padding_length) + input_ids
             input_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + input_mask
             segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
-            start_label_ids = ([pad_token_label_id] * padding_length) + start_label_ids
-            end_label_ids = ([pad_token_label_id] * padding_length) + end_label_ids
+            start_label_ids = ([[pad_token_label_id]] * padding_length) + start_label_ids
+            end_label_ids = ([[pad_token_label_id]] * padding_length) + end_label_ids
         else:
             input_ids += [pad_token] * padding_length
             input_mask += [0 if mask_padding_with_zero else 1] * padding_length
             segment_ids += [pad_token_segment_id] * padding_length
-            start_label_ids += [pad_token_label_id] * padding_length
-            end_label_ids += [pad_token_label_id] * padding_length
+            start_label_ids += [[pad_token_label_id]] * padding_length
+            end_label_ids += [[pad_token_label_id]] * padding_length
         
         # print(len(label_ids), max_seq_length)
 
@@ -226,6 +236,23 @@ def convert_examples_to_features(
                 start_label_ids=start_label_ids, end_label_ids= end_label_ids)
         )
     return features
+
+def convert_label_ids_to_onehot(label_ids):
+    label_list = get_labels(task="role", mode="classification")
+    one_hot_labels= [[False]*len(label_list) for _ in range(len(label_ids))]
+    label_map = {label: i for i, label in enumerate(label_list)}
+    ignore_index= -100
+    non_index= -1
+    for i, label_id in enumerate(label_ids):
+        for sub_label_id in label_id:
+            if sub_label_id not in [ignore_index, non_index]:
+                one_hot_labels[i][sub_label_id]= 1
+    return one_hot_labels
+
+
+
+
+
 
 
 def get_labels(path="./data/event_schema/event_schema.json", task='trigger', mode="ner"):

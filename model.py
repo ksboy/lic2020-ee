@@ -357,7 +357,7 @@ class BertForTokenBinaryClassification(BertPreTrainedModel):
         position_ids=None,
         head_mask=None,
         inputs_embeds=None,
-        start_labels=None,
+        start_labels=None, # batch* num_class* seq_length
         end_labels=None,
     ):
         r"""
@@ -425,47 +425,25 @@ class BertForTokenBinaryClassification(BertPreTrainedModel):
                 active_loss = attention_mask.view(-1) == 1
                 active_start_logits = start_logits.view(-1, self.num_labels)
                 active_end_logits = end_logits.view(-1, self.num_labels)
-                tmp_index= 0
-                ignore_index= -100
-                non_index= -1
-                active_start_labels = start_labels.view(-1)
-                active_end_labels = end_labels.view(-1)
+
+                active_start_labels = start_labels.view(-1, self.num_labels)
+                active_end_labels = end_labels.view(-1, self.num_labels)
                 # attention_mask: 
                 # ignore_index: [cls], [sep]
                 # non_index: no label
-                active_start_non = active_start_labels != non_index
-                active_start_extra = active_start_labels != ignore_index
-                active_start = active_start_non * active_start_extra
-                active_end_non = active_end_labels != non_index
-                active_end_extra = active_end_labels != ignore_index
-                active_end = active_end_non * active_end_extra
 
-                active_start_labels = torch.where(active_start,\
-                         active_start_labels, torch.tensor(tmp_index).type_as(start_labels)
-                )
-                active_end_labels = torch.where(active_end, \
-                        active_end_labels, torch.tensor(tmp_index).type_as(end_labels)
-                )
-                # one hot
-                active_start_labels = F.one_hot(active_start_labels, num_classes=self.num_labels)
-                active_end_labels = F.one_hot(active_end_labels, num_classes=self.num_labels)
-                # 改变 one hot
-                active_start_labels = active_start_labels * (active_start.unsqueeze(-1))
-                active_end_labels = active_end_labels * (active_end.unsqueeze(-1))
-
-                
                 # print(active_loss, active_loss.shape, \
                 #      active_logits,active_logits.shape,\
                 #      active_labels,active_labels.shape,\
                 #      labels, labels.shape)
                 #2048 2048*435 2048 8*256 
                 start_loss = loss_fct(active_start_logits, active_start_labels.float())
-                start_loss = start_loss * (active_start_extra.unsqueeze(-1))
-                start_loss = torch.sum(start_loss)/torch.sum(active_start_extra)
+                start_loss = start_loss * (active_loss.unsqueeze(-1))
+                start_loss = torch.sum(start_loss)/torch.sum(active_loss)
 
                 end_loss = loss_fct(active_end_logits, active_end_labels.float())
-                end_loss = end_loss * (active_end_extra.unsqueeze(-1))
-                end_loss = torch.sum(end_loss)/torch.sum(active_end_extra)
+                end_loss = end_loss * (active_loss.unsqueeze(-1))
+                end_loss = torch.sum(end_loss)/torch.sum(active_loss)
 
 
             else:

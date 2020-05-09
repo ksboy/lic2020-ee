@@ -188,18 +188,41 @@ def predict_data_process(trigger_file, role_file, schema_file, save_path):
     write_by_lines(save_path, pred_ret)
 
 
+def merge(input_file, output_file):
+    lines = open(input_file, encoding='utf-8').read().splitlines()
+    res =[]
+    pre_line = {"id":""}
+    flag= False
+    for line in lines:
+        json_line = json.loads(line)
+        cur_id = json_line["id"]
+        pre_id = pre_line["id"]
+        if cur_id != pre_id:
+            res.append(json_line)
+            pre_id = cur_id
+            pre_line = json_line
+            flag= True
+        else:
+            json_line["event_list"].extend(pre_line["event_list"])
+            pre_line = json_line
+            flag= False
+    if not flag:
+        res.append(json_line)
+    
+    from preprocess import write_file
+    write_file(res, output_file)
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Official evaluation script for DuEE version 0.1.")
-    parser.add_argument(
-        "--trigger_file",
-        help="trigger model predict data path",
-        required=True)
-    parser.add_argument(
-        "--role_file", help="role model predict data path", required=True)
-    parser.add_argument(
-        "--schema_file", help="schema file path", required=True)
-    parser.add_argument("--save_path", help="save file path", required=True)
-    args = parser.parse_args()
-    predict_data_process(args.trigger_file, args.role_file, args.schema_file,
-                         args.save_path)
+   
+    # predict_data_process(
+    #     trigger_file= "./output/trigger/checkpoint-best/test_predictions_indexed.json", \
+    #     role_file = "./output/role/checkpoint-best/test_predictions_indexed.json", \
+    #     schema_file = "./data/event_schema/event_schema.json", \
+    #     save_path =  "./results/test_pred.json")
+    
+    merge("./output/role_segment_bin/checkpoint-best/eval_predictions_indexed.json",\
+          "./results/eval_pred_bi_segment.json")
+    merge("./output/role_segment_bin/checkpoint-best/test_predictions_indexed.json",\
+          "./results/test_pred_bi_segment.json")
+

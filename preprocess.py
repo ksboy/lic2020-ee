@@ -72,42 +72,7 @@ def role_process(input_file, output_file, is_predict=False):
         results.append({"id":row["id"], "tokens":list(row["text"]), "labels":labels})
     write_file(results,output_file)
 
-def role_process_binary(input_file, output_file, is_predict=False):
-    label_list = get_labels(task= "role", mode="classification")
-    label_map = {label: i for i, label in enumerate(label_list)}
-    rows = open(input_file, encoding='utf-8').read().splitlines()
-    results = []
-    for row in rows:
-        if len(row)==1: print(row)
-        row = json.loads(row)
-        start_labels = ['O']*len(row["text"]) 
-        end_labels = ['O']*len(row["text"]) 
-        if is_predict: 
-            results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels})
-            continue
-        for event in row["event_list"]:
-            event_type = event["event_type"]
-            for arg in event["arguments"]:
-                role = arg['role']
-                role_id = label_map[role]
-                argument = arg['argument']
-                argument_start_index = arg["argument_start_index"]
-                argument_end_index = argument_start_index + len(argument) -1
-
-                if start_labels[argument_start_index]=="O":
-                    start_labels[argument_start_index] = role
-                else: 
-                    start_labels[argument_start_index] += (" "+ role)
-                if end_labels[argument_end_index]=="O":
-                    end_labels[argument_end_index] = role
-                else: 
-                    end_labels[argument_end_index] += (" "+ role)
-
-                if arg['alias']!=[]: print(arg['alias'])
-        results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels})
-    write_file(results,output_file)
-
-def trigger_role_process(input_file, output_file, is_predict=False):
+def role_segment_process(input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
     results = []
     len_text = []
@@ -143,6 +108,156 @@ def trigger_role_process(input_file, output_file, is_predict=False):
     write_file(results,output_file)
     print(min(len_text), max(len_text), mean(len_text))
 
+def role_process_binary(input_file, output_file, is_predict=False):
+    label_list = get_labels(task= "role", mode="classification")
+    label_map = {label: i for i, label in enumerate(label_list)}
+    rows = open(input_file, encoding='utf-8').read().splitlines()
+    results = []
+    for row in rows:
+        if len(row)==1: print(row)
+        row = json.loads(row)
+        start_labels = ['O']*len(row["text"]) 
+        end_labels = ['O']*len(row["text"]) 
+        if is_predict: 
+            results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels})
+            continue
+        for event in row["event_list"]:
+            event_type = event["event_type"]
+            for arg in event["arguments"]:
+                role = arg['role']
+                role_id = label_map[role]
+                argument = arg['argument']
+                argument_start_index = arg["argument_start_index"]
+                argument_end_index = argument_start_index + len(argument) -1
+
+                if start_labels[argument_start_index]=="O":
+                    start_labels[argument_start_index] = role
+                else: 
+                    start_labels[argument_start_index] += (" "+ role)
+                if end_labels[argument_end_index]=="O":
+                    end_labels[argument_end_index] = role
+                else: 
+                    end_labels[argument_end_index] += (" "+ role)
+
+                if arg['alias']!=[]: print(arg['alias'])
+        results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels})
+    write_file(results,output_file)
+
+def role_segment_process_binary(input_file, output_file, is_predict=False):
+    label_list = get_labels(task= "role", mode="classification")
+    label_map = {label: i for i, label in enumerate(label_list)}
+    rows = open(input_file, encoding='utf-8').read().splitlines()
+    results = []
+    for row in rows:
+        if len(row)==1: print(row)
+        row = json.loads(row)
+        if is_predict: 
+            results.append({"id":row["id"], "tokens":list(row["text"]), \
+                "start_labels":['O']*len(row["text"]), "end_labels":['O']*len(row["text"])})
+            continue
+        for event in row["event_list"]:
+            event_type = event["event_type"]
+            trigger = event["trigger"]
+            trigger_start_index = event["trigger_start_index"]
+            segment_ids= [0] * len(row["text"])
+            for i in range(trigger_start_index, trigger_start_index+ len(trigger) ):
+                segment_ids[i] = 1
+            start_labels = ['O']*len(row["text"]) 
+            end_labels = ['O']*len(row["text"]) 
+
+            for arg in event["arguments"]:
+                role = arg['role']
+                role_id = label_map[role]
+                argument = arg['argument']
+                argument_start_index = arg["argument_start_index"]
+                argument_end_index = argument_start_index + len(argument) -1
+
+                if start_labels[argument_start_index]=="O":
+                    start_labels[argument_start_index] = role
+                else: 
+                    start_labels[argument_start_index] += (" "+ role)
+                if end_labels[argument_end_index]=="O":
+                    end_labels[argument_end_index] = role
+                else: 
+                    end_labels[argument_end_index] += (" "+ role)
+
+                if arg['alias']!=[]: print(arg['alias'])
+            results.append({"id":row["id"], "tokens":list(row["text"]), "event_type":event_type, \
+                "segment_ids":segment_ids,"start_labels":start_labels, "end_labels":end_labels})
+    write_file(results,output_file)
+
+
+
+def joint_process_binary(input_file, output_file, is_predict=False):
+    label_list = get_labels(task= "role", mode="classification")
+    label_map = {label: i for i, label in enumerate(label_list)}
+    rows = open(input_file, encoding='utf-8').read().splitlines()
+    results = []
+    for row in rows:
+        if len(row)==1: print(row)
+        row = json.loads(row)
+        
+        if is_predict:
+            results.append({"id":row["id"], "tokens":list(row["text"]), \
+              "trigger_start_labels":['O']*len(row["text"]), "role_end_labels":['O']*len(row["text"]), \
+              "role_start_labels":['O']*len(row["text"]), "role_end_labels":['O']*len(row["text"])})
+            continue
+
+        trigger_start_labels = ['O']*len(row["text"]) 
+        trigger_end_labels = ['O']*len(row["text"]) 
+
+        # trigger
+        for event in row["event_list"]:
+            event_type = event["event_type"]
+            trigger = event["trigger"]
+            trigger_start_index = event['trigger_start_index']
+            trigger_end_index = trigger_start_index + len(trigger) -1
+            if trigger_start_labels[trigger_start_index]=="O":
+                trigger_start_labels[trigger_start_index] = event_type
+            else: 
+                trigger_start_labels[trigger_start_index] += (" "+ event_type)
+            if trigger_end_labels[trigger_end_index]=="O":
+                trigger_end_labels[trigger_end_index] = event_type
+            else: 
+                trigger_end_labels[trigger_end_index] += (" "+ event_type)
+        
+        # role
+        for event in row["event_list"]:
+            event_type = event["event_type"]
+            trigger = event["trigger"]
+            trigger_start_index = event['trigger_start_index']
+            segment_ids= [0] * len(row["text"])
+            for i in range(trigger_start_index, trigger_start_index+ len(trigger) ):
+                segment_ids[i] = 1
+
+            role_start_labels = ['O']*len(row["text"]) 
+            role_end_labels = ['O']*len(row["text"]) 
+
+            for arg in event["arguments"]:
+                role = arg['role']
+                role_id = label_map[role]
+                argument = arg['argument']
+                argument_start_index = arg["argument_start_index"]
+                argument_end_index = argument_start_index + len(argument) -1
+                
+                if role_start_labels[argument_start_index]=="O":
+                    role_start_labels[argument_start_index] = role
+                else: 
+                    role_start_labels[argument_start_index] += (" "+ role)
+                    
+                if role_end_labels[argument_end_index]=="O":
+                    role_end_labels[argument_end_index] = role
+                else: 
+                    role_end_labels[argument_end_index] += (" "+ role)
+
+                if arg['alias']!=[]: print(arg['alias'])
+            results.append({"id":row["id"], "tokens":list(row["text"]), "segment_ids":segment_ids, \
+                "trigger_start_labels":trigger_start_labels, "trigger_end_labels":trigger_end_labels, \
+                    "role_start_labels":role_start_labels, "role_end_labels":role_end_labels})
+
+    write_file(results,output_file)
+
+
 
 def data_val(input_file):
     rows = open(input_file, encoding='utf-8').read().splitlines()
@@ -151,6 +266,8 @@ def data_val(input_file):
     role_count = 0
     arg_count = 0
     arg_role_count = 0
+    arg_role_one_event_count = 0
+    trigger_count = 0
     argument_len_list =[]
 
     for row in rows:
@@ -160,11 +277,14 @@ def data_val(input_file):
         arg_start_index_list=[]
         arg_start_index_map={}
         event_class_list = []
+        trigger_start_index_list = []
 
         event_class_flag = False
         arg_start_index_flag= False
         role_flag = False
         arg_role_flag= False
+        arg_role_one_event_flag= False
+        trigger_flag = False
 
         for event in row["event_list"]:
             event_class = event["class"]
@@ -174,8 +294,16 @@ def data_val(input_file):
                 # event_class_count += 1
                 event_class_flag = True
                 # print(row)
+            
+            trigger_start_index= event["trigger_start_index"]
+            if trigger_start_index not in trigger_start_index_list:
+                trigger_start_index_list.append(trigger_start_index)
+            else:
+                trigger_flag = True
+                print(row)
 
             role_list = []
+            arg_start_index_map_in_one_event = {}
             for arg in  event["arguments"]:
                 role = arg['role']
                 argument = arg['argument']
@@ -187,6 +315,14 @@ def data_val(input_file):
                     # role_count += 1
                     arg_start_index_flag = True
                     # print(row)
+                
+                if argument_start_index not in arg_start_index_map_in_one_event:
+                    arg_start_index_map_in_one_event[argument_start_index]= role
+                else:
+                    if role!= arg_start_index_map_in_one_event[argument_start_index]:
+                        arg_role_one_event_flag = True
+                        # print(row)
+
 
                 if argument_start_index not in arg_start_index_list:
                     arg_start_index_list.append(argument_start_index)
@@ -209,8 +345,12 @@ def data_val(input_file):
             # print(row)
         if arg_role_flag:
             arg_role_count += 1
+        if arg_role_one_event_flag:
+            arg_role_one_event_count += 1
+        if trigger_flag:
+            trigger_count += 1
     
-    print(event_class_count, role_count, arg_count, arg_role_count)
+    print(event_class_count, role_count, arg_count, arg_role_count, arg_role_one_event_count, trigger_count)
     argument_len_list.sort(key=lambda x:x[0], reverse= True)
     print(argument_len_list[:10])
 
@@ -288,17 +428,134 @@ def index_output(test_file, prediction_file, output_file):
     tests = open(test_file, encoding='utf-8').read().splitlines()
     predictions = open(prediction_file, encoding='utf-8').read().splitlines()
     results = []
+    index = 0
+    max_length = 256-2
     for test,prediction in zip(tests, predictions):
+        index += 1
         test = json.loads(test)
         tokens = test.pop('tokens')
         test['text'] = ''.join(tokens)
 
         prediction = json.loads(prediction)
+        labels = prediction["labels"]
+        if len(labels)!=len(tokens) and len(labels) != max_length:
+            print(labels, tokens)
+            print(len(labels), len(tokens), index)
+            break
         test.update(prediction) 
 
         results.append(test)
     write_file(results, output_file)
+
+def index_output_bin(test_file, prediction_file, output_file):
+    from utils_bi_ner_segment import get_labels
+    label_list = get_labels(task='role', mode="classification")
+    label_map =  {i: label for i, label in enumerate(label_list)}
+
+    tests = open(test_file, encoding='utf-8').read().splitlines()
+    predictions = open(prediction_file, encoding='utf-8').read().splitlines()
+    results = []
+    index = 0
+    max_length = 256-2
+    for test, prediction in zip(tests, predictions):
+        index += 1
+        test = json.loads(test)
+        start_labels = test.pop('start_labels')
+        end_labels = test.pop('end_labels')
+
+        tokens = test.pop('tokens')
+        text = ''.join(tokens)
+        test['text'] = text
+
+        segment_ids =  test.pop('segment_ids')
+        trigger = ''.join([tokens[i] for i in range(len(tokens)) if segment_ids[i]])
+        for i in range(len(tokens)):
+            if segment_ids[i]:
+                trigger_start_index = i
+                break
         
+        event = {}
+        # event['trigger'] = trigger
+        # event['trigger_start_index']= trigger_start_index
+        event_type = test.pop("event_type")
+        event["event_type"]=event_type
+
+        prediction = json.loads(prediction)
+        arg_list = prediction["labels"]
+        arguments =[]
+        for arg in arg_list:
+            sub_dict = {}
+            argument_start_index = arg[1] -1 
+            argument_end_index = arg[2] -1 
+            argument = text[argument_start_index:argument_end_index+1]
+            role = label_map[arg[3]]
+            sub_dict["role"]=role
+            sub_dict["argument"]=argument
+            # sub_dict["argument_start_index"] = argument_start_index
+            arguments.append(sub_dict)
+        
+        event["arguments"]= arguments
+
+        test['event_list']= [event]
+        results.append(test)
+    write_file(results, output_file)
+
+# un-finished
+# def binary_to_bio(test_file, prediction_file, output_file):
+#     tests = open(test_file, encoding='utf-8').read().splitlines()
+#     predictions = open(prediction_file, encoding='utf-8').read().splitlines()
+#     results = []
+#     for test,prediction in zip(tests, predictions):
+#         test = json.loads(test)
+#         tokens = test.pop('tokens')
+#         test['text'] = ''.join(tokens)
+
+#         row_preds_list = json.loads(prediction)
+        
+#         labels= ['O']*len(tokens)
+#         # for pred in row_preds_list:
+        
+#         test.update(prediction) 
+
+#         results.append(test)
+#     write_file(results, output_file)
+
+def convert_bio_to_segment(input_file, output_file):
+    from postprocess import extract_result
+    lines = open(input_file, encoding='utf-8').read().splitlines()
+    res = []
+    for line in lines:
+        line = json.loads(line)
+        text = line["text"]
+        labels = line["labels"]
+        tokens = list(text)
+        if len(labels)!=len(tokens):
+            print(len(labels), len(tokens))
+
+        triggers = extract_result(text, labels)
+        if len(triggers)==0:
+            print("detect no trigger")
+        for trigger in triggers:
+            event_type= trigger["type"]
+            segment_ids = [0]*(len(tokens))
+            trigger_start_index = trigger['start']
+            trigger_end_index = trigger['start'] + len(trigger['text'])
+            for i in range(trigger_start_index, trigger_end_index):
+                segment_ids[i] = 1
+            start_labels = ['O']*(len(tokens))
+            end_labels =  ['O']*(len(tokens))
+
+            cur_line = {}
+            cur_line["id"] = line["id"]
+            cur_line["tokens"] = tokens
+            cur_line["event_type"] = event_type
+            cur_line["segment_ids"] = segment_ids
+            cur_line["start_labels"] = start_labels
+            cur_line["end_labels"] = end_labels
+            res.append(cur_line)
+    write_file(res, output_file)
+        
+
 def read_write(input_file, output_file):
     rows = open(input_file, encoding='utf-8').read().splitlines()
     results = []
@@ -325,12 +582,19 @@ if __name__ == '__main__':
     # role_process_binary("./data/dev_data/dev.json","./data/role_bin/dev.json")
     # role_process_binary("./data/test1_data/test1.json", "./data/role_bin/test.json",is_predict=True)
 
-    # trigger_role_process("./data/train_data/train.json", "./data/trigger_role/train.json")
-    # trigger_role_process("./data/dev_data/dev.json","./data/trigger_role/dev.json")
-    # trigger_role_process("./data/test1_data/test1.json", "./data/trigger_role/test.json",is_predict=True)
+    # role_segment_process("./data/train_data/train.json", "./data/role_segment/train.json")
+    # role_segment_process("./data/dev_data/dev.json","./data/role_segment/dev.json")
+    # role_segment_process("./data/test1_data/test1.json", "./data/role_segment/test.json",is_predict=True)
 
-    data_val("./data/train_data/train.json")
-    data_val("./data/dev_data/dev.json")
+    # joint_process_binary("./data/train_data/train.json", "./data/joint_bin/train.json")
+    # joint_process_binary("./data/dev_data/dev.json","./data/joint_bin/dev.json")
+    # joint_process_binary("./data/test1_data/test1.json", "./data/joint_bin/test.json",is_predict=True)
+
+    role_segment_process_binary("./data/train_data/train.json", "./data/role_segment_bin/train.json")
+    role_segment_process_binary("./data/dev_data/dev.json","./data/role_segment_bin/dev.json")
+
+    # data_val("./data/train_data/train.json")
+    # data_val("./data/dev_data/dev.json")
 
     # 无异常
     # position_val("./data/train_data/train.json")
@@ -344,8 +608,17 @@ if __name__ == '__main__':
     #     role_process_filter(event_class, "./data/train_data/train.json", "./data/role/{}/train.json".format(event_class))
     #     role_process_filter(event_class, "./data/dev_data/dev.json","./data/role/{}/dev.json".format(event_class))
 
-    # index_output("./data/role/dev.json" , "./output/role/eval_predictions.json","./output/role/eval_predictions_indexed.json" )
-    # index_output("./data/trigger/dev.json" , "./output/trigger/eval_predictions.json","./output/trigger/eval_predictions_indexed.json" )
+    # index_output("./data/trigger/dev.json" , "./output/trigger/checkpoint-best/eval_predictions.json","./output/trigger/checkpoint-best/eval_predictions_indexed.json" )
+    # index_output("./data/trigger/test.json" , "./output/trigger/checkpoint-best/test_predictions.json","./output/trigger/checkpoint-best/test_predictions_indexed.json" )
+    
+    # index_output("./data/role/dev.json" , "./output/role/checkpoint-best/eval_predictions.json","./output/role/checkpoint-best/eval_predictions_indexed.json" )
+    # index_output("./data/role/test.json" , "./output/role/checkpoint-best/test_predictions.json","./output/role/checkpoint-best/test_predictions_indexed.json" )
+
+    # index_output_bin("./data/role_segment_bin/dev.json" , "./output/role_segment_bin/checkpoint-best/eval_predictions.json","./output/role_segment_bin/checkpoint-best/eval_predictions_indexed.json" )
+    # index_output_bin("./data/role_segment_bin/test.json" , "./output/role_segment_bin/checkpoint-best/test_predictions.json","./output/role_segment_bin/checkpoint-best/test_predictions_indexed.json" )
+
+    # convert_bio_to_segment("./output/trigger/checkpoint-best/test_predictions_indexed.json",\
+    #     "./output/trigger/checkpoint-best/test_predictions_indexed_semgent_id.json")
 
     # read_write("./output/eval_pred.json", "./results/eval_pred.json")
     # read_write("./results/test1.trigger.pred.json", "./results/paddle.trigger.json")

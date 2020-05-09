@@ -1,27 +1,29 @@
-MAX_LENGTH=256
+MAX_LENGTH=384
 TASK=role
 MODEL=/home/mhxia/whou/workspace/pretrained_models/chinese_roberta_wwm_large_ext_pytorch  #albert-xxlarge-v2/  #bert-large-uncased-wwm/
-DATA_DIR=./data/role_bin/
+DATA_DIR=./data/trigger_role/
 SCHEMA=./data/event_schema/event_schema.json
-OUTPUT_DIR=./output/role_bin/
-BATCH_SIZE=8
+OUTPUT_DIR=./output/role_trigger_384/
+BATCH_SIZE=4
 EVAL_BATCH_SIZE=64
-NUM_EPOCHS=10
+NUM_EPOCHS=20
 SAVE_STEPS=300
 # SAVE_STEPS= $save_steps* gradient_accumulation_steps * batch_size * num_gpus
 WARMUP_STEPS=1000
 SEED=1
 LR=3e-5
 
-CUDA_VISIBLE_DEVICES=0,1 python3 run_bi_ner.py \
+CUDA_VISIBLE_DEVICES=1,0,2,3 python3 run_ner.py \
 --task $TASK \
 --model_type bert \
 --model_name_or_path $MODEL \
 --do_train \
 --do_eval \
 --evaluate_during_training \
---eval_all_checkpoints \
 --data_dir $DATA_DIR \
+--overwrite_cache  \
+--do_lower_case \
+--keep_accents \
 --schema $SCHEMA \
 --output_dir $OUTPUT_DIR \
 --overwrite_output_dir \
@@ -40,3 +42,4 @@ CUDA_VISIBLE_DEVICES=0,1 python3 run_bi_ner.py \
 # --fp16 \
 # --freeze 
 # --overwrite_cache  \
+# --eval_all_checkpoints \

@@ -111,14 +111,20 @@ def convert_examples_to_features(
         for word, label in zip(example.words, example.labels):
             word_tokens = tokenizer.tokenize(word)
             tokens.extend(word_tokens)
-            if len(word_tokens)>1: print(word)
-            if len(word_tokens)<1: continue
+
+            if len(word_tokens)>1: 
+                # print(word,">1") # 没有
+                pass
+            if len(word_tokens)<1: 
+                # print(word,"<1") 基本都是空格
+                tokens.extend(["[unused1]"])
+                # continue
             # Use the real label id for the first token of the word, and padding ids for the remaining tokens
             label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(word_tokens) - 1))
             # if len(tokens)!= len(label_ids):
             #     print(word, word_tokens, tokens, label_ids)
-        # print(len(tokens),len(label_ids))
-
+            assert len(tokens) == len(label_ids)
+        # print(len(tokens),len(label_ids)) 
         # Account for [CLS] and [SEP] with "- 2" and with "- 3" for RoBERTa.
         special_tokens_count = 3 if sep_token_extra else 2
         if len(tokens) > max_seq_length - special_tokens_count:

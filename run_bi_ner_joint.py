@@ -53,10 +53,10 @@ from transformers import (
     XLMRobertaTokenizer,
     get_linear_schedule_with_warmup,
 )
-from model import BertForTokenClassificationWithDiceLoss, BertForTokenClassificationWithTrigger,\
-     BertForTokenBinaryClassification, BertForTokenBinaryClassificationWithTrigger
+from model import BertForTokenClassificationWithDiceLoss, BertForTokenClassificationWithTrigger, \
+    BertForTokenBinaryClassification, BertForTokenBinaryClassificationJoint
 
-from utils_bi_ner_segment import convert_examples_to_features, get_labels, read_examples_from_file, convert_label_ids_to_onehot
+from utils_bi_ner_joint import convert_examples_to_features, get_labels, read_examples_from_file, convert_label_ids_to_onehot
 # from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
 from preprocess import write_file
 
@@ -78,7 +78,7 @@ ALL_MODELS = sum(
 
 MODEL_CLASSES = {
     "albert": (AlbertConfig, AlbertForTokenClassification, AlbertTokenizer),
-    "bert": (BertConfig, BertForTokenBinaryClassificationWithTrigger, BertTokenizer),
+    "bert": (BertConfig, BertForTokenBinaryClassificationJoint, BertTokenizer),
     "roberta": (RobertaConfig, RobertaForTokenClassification, RobertaTokenizer),
     "distilbert": (DistilBertConfig, DistilBertForTokenClassification, DistilBertTokenizer),
     "camembert": (CamembertConfig, CamembertForTokenClassification, CamembertTokenizer),
@@ -96,7 +96,7 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 
-def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
+def train(args, train_dataset, model, tokenizer, trigger_labels, role_labels, pad_token_label_id):
     """ Train the model """
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter(log_dir=args.output_dir)
@@ -203,7 +203,9 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
 
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "start_labels": batch[3], "end_labels": batch[4]}
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1], \
+                "trigger_start_labels": batch[3], "trigger_end_labels": batch[4],\
+                "role_start_labels": batch[5], "role_end_labels": batch[6]}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet"] else None
@@ -236,12 +238,12 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                 model.zero_grad()
                 global_step += 1
 
-                if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0  and iteration_index >= 1:
+                if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0  and iteration_index> -1:
                     # Log metrics
                     if (
                         args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
-                        results, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev")
+                        results, _ = evaluate(args, model, tokenizer, trigger_labels, role_labels, pad_token_label_id, mode="dev")
                         for key, value in results.items():
                             tb_writer.add_scalar("eval_{}".format(key), value, global_step)
                     tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
@@ -297,8 +299,8 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""):
-    eval_dataset = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode=mode)
+def evaluate(args, model, tokenizer, trigger_labels, role_labels, pad_token_label_id, mode, prefix=""):
+    eval_dataset = load_and_cache_examples(args, tokenizer, trigger_labels, role_labels, pad_token_label_id, mode=mode)
 
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
     # Note that DistributedSampler samples randomly
@@ -322,12 +324,14 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         batch = tuple(t.to(args.device) for t in batch)
 
         with torch.no_grad():
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "start_labels": batch[3], "end_labels": batch[4]}
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1], \
+                "trigger_start_labels": batch[3], "trigger_end_labels": batch[4], \
+                "role_start_labels": batch[5], "role_end_labels": batch[6]}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet"] else None
                 )  # XLM and RoBERTa don"t use segment_ids
-            outputs = model(**inputs)
+            outputs = model.predict(**inputs)
             tmp_eval_loss, (start_logits, end_logits) = outputs[:2]
 
             if args.n_gpu > 1:
@@ -359,14 +363,14 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     end_preds = sigmoid(end_preds) > threshold
 
     # 1498*256*217
-    sample_num, seq_length, num_labels=  start_out_label_ids.shape
+    batch_size, seq_length, num_labels=  start_out_label_ids.shape
     
     out_label_list = []
     preds_list = []
     
     dis = 160
     # labels
-    for i in trange(sample_num):   # sample_index
+    for i in trange(batch_size):   # batch_index
         for j in range(seq_length):  # token_index 
             if not attention_mask[i, j]: continue
             # 实体 头
@@ -375,12 +379,12 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
                     # 寻找 实体尾 
                     for l in range(j, min(j+ dis, seq_length)):
                         if end_out_label_ids[i][l][k]:
-                            out_label_list.append((i, j, l, k)) # index, start, end, label
+                            out_label_list.append((i, j, l, k)) # batch, start, end, label
                             break
     # print(out_label_list[:10])
     # preds
     batch_preds_list = []
-    for i in trange(sample_num):   # batch_index
+    for i in trange(batch_size):   # batch_index
         cur_preds_list=[]
         for j in range(seq_length):  # token_index 
             # 实体 头
@@ -390,7 +394,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
                 if start_preds[i][j][k]:
                     for l in range(j, min(j+ dis, seq_length)):
                         if end_preds[i][l][k]:
-                            cur_preds_list.append((i, j, l, k)) # index, start, end, label
+                            cur_preds_list.append((i, j, l, k)) # start, end, label
                             break
         batch_preds_list.append(cur_preds_list)
     
@@ -401,7 +405,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
 
     # print(preds_list[:10])
     nb_correct  = 0
-    for out_label in tqdm(out_label_list, desc="Computing Metric"):
+    for out_label in out_label_list:
         for pred in preds_list:
             if out_label==pred:
                 nb_correct+=1
@@ -426,7 +430,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     return results, batch_preds_list
 
 
-def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
+def load_and_cache_examples(args, tokenizer, trigger_labels, role_labels, pad_token_label_id, mode):
     if args.local_rank not in [-1, 0] and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
@@ -445,7 +449,8 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
         examples = read_examples_from_file(args.data_dir, mode)
         features = convert_examples_to_features(
             examples,
-            labels,
+            trigger_labels,
+            role_labels,
             args.max_seq_length,
             tokenizer,
             cls_token_at_end=bool(args.model_type in ["xlnet"]),
@@ -472,10 +477,12 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
-    all_start_label_ids = torch.tensor([convert_label_ids_to_onehot(f.start_label_ids, labels) for f in features], dtype=torch.int)
-    all_end_label_ids = torch.tensor([convert_label_ids_to_onehot(f.end_label_ids, labels) for f in features], dtype=torch.int)
-
-    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_start_label_ids, all_end_label_ids)
+    all_trigger_start_label_ids = torch.tensor([convert_label_ids_to_onehot(f.trigger_start_label_ids, trigger_labels) for f in features], dtype=torch.int)
+    all_trigger_end_label_ids = torch.tensor([convert_label_ids_to_onehot(f.trigger_end_label_ids, trigger_labels) for f in features], dtype=torch.int)
+    all_role_start_label_ids = torch.tensor([convert_label_ids_to_onehot(f.role_start_label_ids, role_labels) for f in features], dtype=torch.int)
+    all_role_end_label_ids = torch.tensor([convert_label_ids_to_onehot(f.role_end_label_ids, role_labels) for f in features], dtype=torch.int)
+    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_trigger_start_label_ids, all_trigger_end_label_ids,\
+        all_role_start_label_ids, all_role_end_label_ids)
     return dataset
 
 
@@ -680,8 +687,10 @@ def main():
     set_seed(args)
 
     # Prepare CONLL-2003 task
-    labels = get_labels(args.schema, task=args.task, mode="classification")
-    num_labels = len(labels)
+    trigger_labels = get_labels(args.schema, task="trigger", mode="classification")
+    num_trigger_labels = len(trigger_labels)
+    role_labels = get_labels(args.schema, task="role", mode="classification")
+    num_role_labels = len(role_labels)
     # Use cross entropy ignore index as padding label id so that only real label ids contribute to the loss later
     ignore_index = -100
     pad_token_label_id = ignore_index
@@ -694,11 +703,16 @@ def main():
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     config = config_class.from_pretrained(
         args.config_name if args.config_name else args.model_name_or_path,
-        num_labels=num_labels,
-        id2label={str(i): label for i, label in enumerate(labels)},
-        label2id={label: i for i, label in enumerate(labels)},
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
+    our_config = {"trigger_num_labels":num_trigger_labels,
+        "role_num_labels":num_role_labels,
+        "trigger_id2label":{str(i): label for i, label in enumerate(trigger_labels)},
+        "trigger_label2id":{label: i for i, label in enumerate(trigger_labels)},
+        "role_id2label":{str(i): label for i, label in enumerate(role_labels)},
+        "role_label2id":{label: i for i, label in enumerate(role_labels)},}
+    config.update(our_config)
+
     tokenizer_args = {k: v for k, v in vars(args).items() if v is not None and k in TOKENIZER_ARGS}
     logger.info("Tokenizer arguments: %s", tokenizer_args)
     tokenizer = tokenizer_class.from_pretrained(
@@ -734,8 +748,8 @@ def main():
 
     # Training
     if args.do_train:
-        train_dataset = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode="train")
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer, labels, pad_token_label_id)
+        train_dataset = load_and_cache_examples(args, tokenizer, trigger_labels, role_labels, pad_token_label_id, mode="train")
+        global_step, tr_loss = train(args, train_dataset, model, tokenizer, trigger_labels, role_labels, pad_token_label_id)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
@@ -769,7 +783,7 @@ def main():
         for checkpoint in checkpoints:
             model = model_class.from_pretrained(checkpoint)
             model.to(args.device)
-            result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=checkpoint)
+            result, predictions = evaluate(args, model, tokenizer, trigger_labels, role_labels, pad_token_label_id, mode="dev", prefix=checkpoint)
             # Save results
             output_eval_results_file = os.path.join(checkpoint, "eval_results.txt")
             with open(output_eval_results_file, "w") as writer:

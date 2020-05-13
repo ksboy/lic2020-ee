@@ -1,10 +1,10 @@
 MAX_LENGTH=256
 TASK=role
 MODEL=/home/mhxia/whou/workspace/pretrained_models/chinese_roberta_wwm_large_ext_pytorch  #albert-xxlarge-v2/  #bert-large-uncased-wwm/
-DATA_DIR=./data/role_bin/
+DATA_DIR=./data/role_segment_bin/
 SCHEMA=./data/event_schema/event_schema.json
-OUTPUT_DIR=./output/role_bin2/
-BATCH_SIZE=8
+OUTPUT_DIR=./output/role_segment_bin/
+BATCH_SIZE=1
 EVAL_BATCH_SIZE=64
 NUM_EPOCHS=20
 SAVE_STEPS=300
@@ -13,7 +13,7 @@ WARMUP_STEPS=1000
 SEED=1
 LR=3e-5
 
-CUDA_VISIBLE_DEVICES=3,1 python3 run_bi_ner.py \
+CUDA_VISIBLE_DEVICES=2,0 python -m torch.distributed.launch --nproc_per_node=2 run_bi_ner.py \
 --task $TASK \
 --model_type bert \
 --model_name_or_path $MODEL \
@@ -38,7 +38,6 @@ CUDA_VISIBLE_DEVICES=3,1 python3 run_bi_ner.py \
 --weight_decay 0 \
 --warmup_steps $WARMUP_STEPS \
 --seed $SEED \
---overwrite_cache  
 # --fp16 \
 # --freeze 
 # --overwrite_cache  \

@@ -243,7 +243,7 @@ def convert_examples_to_features(
     return features
 
 def convert_label_ids_to_onehot(label_ids,label_list):
-    one_hot_labels= [[False]*len(label_list) for _ in range(len(label_ids))]
+    one_hot_labels= [[0]*len(label_list) for _ in range(len(label_ids))]
     label_map = {label: i for i, label in enumerate(label_list)}
     ignore_index= -100
     non_index= -1
@@ -255,61 +255,3 @@ def convert_label_ids_to_onehot(label_ids,label_list):
 
 
 
-
-def get_labels(path="./data/event_schema/event_schema.json", task='trigger', mode="ner"):
-    if not path:
-        if mode=='ner':
-            return ["O", "B-ENTITY", "I-ENTITY"]
-        else:
-            return ["O"]
-
-    if task=='trigger':
-        labels = []
-        rows = open(path, encoding='utf-8').read().splitlines()
-        if mode == "ner": labels.append('O')
-        for row in rows:
-            row = json.loads(row)
-            event_type = row["event_type"]
-            if mode == "ner":
-                labels.append("B-{}".format(event_type))
-                labels.append("I-{}".format(event_type))
-            else:
-                labels.append(event_type)
-        return labels
-
-    elif task=='role':
-        labels = []
-        rows = open(path, encoding='utf-8').read().splitlines()
-        if mode == "ner": labels.append('O')
-        for row in rows:
-            row = json.loads(row)
-            for role in row["role_list"]:
-                role_type = role['role']
-                if mode == "ner":
-                    labels.append("B-{}".format(role_type))
-                    labels.append("I-{}".format(role_type))
-                else:
-                    labels.append(role_type)
-        return labels
-        
-    else:
-        labels = []
-        rows = open(path, encoding='utf-8').read().splitlines()
-        if mode == "ner": labels.append('O')
-        for row in rows:
-            row = json.loads(row)
-            if row['class']!=task:
-                continue
-            for role in row["role_list"]:
-                role_type = role['role']
-                if mode == "ner":
-                    labels.append("B-{}".format(role_type))
-                    labels.append("I-{}".format(role_type))
-                else:
-                    labels.append(role_type)
-        return labels
-
-
-if __name__ == '__main__':
-    labels = get_labels(path="./data/event_schema/event_schema.json", task='role')
-    print(len(labels), labels)

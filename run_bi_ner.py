@@ -55,8 +55,8 @@ from transformers import (
 )
 from model import BertForTokenClassificationWithDiceLoss, BertForTokenClassificationWithTrigger,\
      BertForTokenBinaryClassification, BertForTokenBinaryClassificationWithTrigger
-
-from utils_bi_ner_segment import convert_examples_to_features, get_labels, read_examples_from_file, convert_label_ids_to_onehot
+from utils import get_labels
+from utils_bi_ner import convert_examples_to_features, read_examples_from_file, convert_label_ids_to_onehot
 # from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
 from preprocess import write_file
 
@@ -78,7 +78,7 @@ ALL_MODELS = sum(
 
 MODEL_CLASSES = {
     "albert": (AlbertConfig, AlbertForTokenClassification, AlbertTokenizer),
-    "bert": (BertConfig, BertForTokenBinaryClassificationWithTrigger, BertTokenizer),
+    "bert": (BertConfig, BertForTokenBinaryClassification, BertTokenizer),
     "roberta": (RobertaConfig, RobertaForTokenClassification, RobertaTokenizer),
     "distilbert": (DistilBertConfig, DistilBertForTokenClassification, DistilBertTokenizer),
     "camembert": (CamembertConfig, CamembertForTokenClassification, CamembertTokenizer),
@@ -236,7 +236,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                 model.zero_grad()
                 global_step += 1
 
-                if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0  and iteration_index >= 1:
+                if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0  and iteration_index >= 0:
                     # Log metrics
                     if (
                         args.local_rank == -1 and args.evaluate_during_training
@@ -377,7 +377,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
                         if end_out_label_ids[i][l][k]:
                             out_label_list.append((i, j, l, k)) # index, start, end, label
                             break
-    # print(out_label_list[:10])
+    # print(out_label_list[:5])
     # preds
     batch_preds_list = []
     for i in trange(sample_num):   # batch_index
@@ -393,7 +393,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
                             cur_preds_list.append((i, j, l, k)) # index, start, end, label
                             break
         batch_preds_list.append(cur_preds_list)
-    
+    # print(batch_preds_list[:5])
     # 变成 一维
     for row_preds_list in batch_preds_list:
         for pred in row_preds_list:
@@ -402,11 +402,15 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     # print(preds_list[:10])
     nb_correct  = 0
     for out_label in tqdm(out_label_list, desc="Computing Metric"):
-        for pred in preds_list:
-            if out_label==pred:
-                nb_correct+=1
+        # for pred in preds_list:
+        #     if out_label==pred:
+        #         nb_correct+=1
+        if out_label in preds_list:
+            nb_correct += 1
+            continue
     nb_pred = len(preds_list)
     nb_true = len(out_label_list)
+    # print(nb_correct, nb_pred, nb_true)
 
     p = nb_correct / nb_pred if nb_pred > 0 else 0
     r = nb_correct / nb_true if nb_true > 0 else 0
@@ -427,6 +431,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
 
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
+    # print(labels[:5], labels[-5:])
     if args.local_rank not in [-1, 0] and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
@@ -681,6 +686,7 @@ def main():
 
     # Prepare CONLL-2003 task
     labels = get_labels(args.schema, task=args.task, mode="classification")
+    # print(labels[:5], labels[-5:])
     num_labels = len(labels)
     # Use cross entropy ignore index as padding label id so that only real label ids contribute to the loss later
     ignore_index = -100

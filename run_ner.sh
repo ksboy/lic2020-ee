@@ -1,9 +1,9 @@
 MAX_LENGTH=256
-TASK=trigger
+TASK=role
 MODEL=/home/mhxia/whou/workspace/pretrained_models/chinese_roberta_wwm_large_ext_pytorch  #albert-xxlarge-v2/  #bert-large-uncased-wwm/
-DATA_DIR=./data/trigger/
+DATA_DIR=./data/role/
 SCHEMA=./data/event_schema/event_schema.json
-OUTPUT_DIR=./output/trigger/
+OUTPUT_DIR=./output/role2/
 BATCH_SIZE=8
 EVAL_BATCH_SIZE=64
 NUM_EPOCHS=20
@@ -38,9 +38,9 @@ CUDA_VISIBLE_DEVICES=3,1 python3 run_ner.py \
 --weight_decay 0 \
 --warmup_steps $WARMUP_STEPS \
 --seed $SEED \
+--overwrite_cache 
 # --fp16 \
 # --freeze 
-# --overwrite_cache \
 # --eval_all_checkpoints \
 
 

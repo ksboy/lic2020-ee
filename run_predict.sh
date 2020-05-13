@@ -1,13 +1,13 @@
 MAX_LENGTH=256
 TASK=role
 MODEL=/home/mhxia/whou/workspace/pretrained_models/chinese_roberta_wwm_large_ext_pytorch  #albert-xxlarge-v2/  #bert-large-uncased-wwm/
-DATA_DIR=./data/role_segment_bin/
+DATA_DIR=./data/role_bin/
 SCHEMA=./data/event_schema/event_schema.json
-OUTPUT_DIR=./output/role_segment_bin/
+OUTPUT_DIR=./output/role_bin2/
 EVAL_BATCH_SIZE=64
 SEED=1
 
-CUDA_VISIBLE_DEVICES=3 python3 run_bi_ner.py \
+CUDA_VISIBLE_DEVICES=0 python3 run_bi_ner.py \
 --task $TASK \
 --model_type bert \
 --model_name_or_path $MODEL \

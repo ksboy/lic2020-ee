@@ -1,0 +1,7 @@
+{"text": "据猛龙随队记者Josh Lewenberg报道，消息人士透露，猛龙已将前锋萨加巴-科纳特裁掉。此前他与猛龙签下了一份Exhibit 10合同。在被裁掉后，科纳特下赛季大概率将前往猛龙的发展联盟球队效力。", "id": "8a440ade8a8bac469e0357cc519ec9c0", "event_list": 
+    [{"event_type": "组织关系-裁员", "trigger": "裁掉", "trigger_start_index": 44, 
+        "arguments": [{"argument_start_index": 31, "role": "裁员方", "argument": "猛龙", "alias": []}], "class": "组织关系"}, 
+     {"event_type": "组织关系-裁员", "trigger": "裁掉", "trigger_start_index": 73, 
+         "arguments": [{"argument_start_index": 31, "role": "裁员方", "argument": "猛龙", "alias": []}], "class": "组织关系"},
+     {"event_type": "组织关系-加盟", "trigger": "签下", "trigger_start_index": 53, 
+         "arguments": [{"argument_start_index": 35, "role": "加盟者", "argument": "前锋萨加巴-科纳特", "alias": []}, {"argument_start_index": 51, "role": "所加盟组织", "argument": "猛龙", "alias": []}], "class": "组织关系"}, ]}

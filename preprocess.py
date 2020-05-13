@@ -1,12 +1,29 @@
 import json
 import os
-from utils_bi_ner import get_labels
+from utils import get_labels
 
 def write_file(datas, output_file):
     with open(output_file, 'w', encoding='utf-8') as f:
         for obj in datas:
             json.dump(obj, f, ensure_ascii=False)
             f.write("\n")
+
+def trigger_classify_process(input_file, output_file, is_predict=False):
+    rows = open(input_file, encoding='utf-8').read().splitlines()
+    results = []
+    for row in rows:
+        if len(row)==1: print(row)
+        row = json.loads(row)
+        labels = []
+        if is_predict: 
+            results.append({"id":row["id"], "text":row["text"], "labels":labels})
+            continue
+        for event in row["event_list"]:
+            event_type = event["event_type"]
+            labels.append(event_type)
+        labels = list(set(labels))
+        results.append({"id":row["id"], "text":row["text"], "labels":labels})
+    write_file(results,output_file)
 
 def trigger_process(input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
@@ -447,7 +464,7 @@ def index_output(test_file, prediction_file, output_file):
         results.append(test)
     write_file(results, output_file)
 
-def index_output_bin(test_file, prediction_file, output_file):
+def index_output_segment_bin(test_file, prediction_file, output_file):
     from utils_bi_ner_segment import get_labels
     label_list = get_labels(task='role', mode="classification")
     label_map =  {i: label for i, label in enumerate(label_list)}
@@ -500,6 +517,45 @@ def index_output_bin(test_file, prediction_file, output_file):
         results.append(test)
     write_file(results, output_file)
 
+def index_output_bin(test_file, prediction_file, output_file):
+    from utils_bi_ner_segment import get_labels
+    label_list = get_labels(task='role', mode="classification")
+    label_map =  {i: label for i, label in enumerate(label_list)}
+
+    tests = open(test_file, encoding='utf-8').read().splitlines()
+    predictions = open(prediction_file, encoding='utf-8').read().splitlines()
+    results = []
+    index = 0
+    max_length = 256-2
+    for test, prediction in zip(tests, predictions):
+        index += 1
+        test = json.loads(test)
+        start_labels = test.pop('start_labels')
+        end_labels = test.pop('end_labels')
+
+        tokens = test.pop('tokens')
+        text = ''.join(tokens)
+        test['text'] = text
+
+        prediction = json.loads(prediction)
+        arg_list = prediction["labels"]
+        arguments =[]
+        for arg in arg_list:
+            sub_dict = {}
+            argument_start_index = arg[1] -1 
+            argument_end_index = arg[2] -1 
+            argument = text[argument_start_index:argument_end_index+1]
+            role = label_map[arg[3]]
+            sub_dict["role"]=role
+            sub_dict["argument"]=argument
+            # sub_dict["argument_start_index"] = argument_start_index
+            arguments.append(sub_dict)
+        
+        test["arguments"]= arguments
+        results.append(test)
+    write_file(results, output_file)
+
+
 # un-finished
 # def binary_to_bio(test_file, prediction_file, output_file):
 #     tests = open(test_file, encoding='utf-8').read().splitlines()
@@ -519,6 +575,8 @@ def index_output_bin(test_file, prediction_file, output_file):
 
 #         results.append(test)
 #     write_file(results, output_file)
+
+# ner_segment_bi 输入的预处理函数
 
 def convert_bio_to_segment(input_file, output_file):
     from postprocess import extract_result
@@ -574,6 +632,10 @@ def read_write(input_file, output_file):
 
 
 if __name__ == '__main__':
+    trigger_classify_process("./data/train_data/train.json", "./data/trigger_classify/train.json")
+    trigger_classify_process("./data/dev_data/dev.json", "./data/trigger_classify/dev.json")
+    trigger_classify_process("./data/test1_data/test1.json", "./data/trigger_classify/test.json",is_predict=True)
+
     # trigger_process_binary("./data/train_data/train.json", "./data/trigger_bin/train.json")
     # trigger_process_binary("./data/dev_data/dev.json","./data/trigger_bin/dev.json")
     # trigger_process_binary("./data/test1_data/test1.json", "./data/trigger_bin/test.json",is_predict=True)
@@ -590,8 +652,8 @@ if __name__ == '__main__':
     # joint_process_binary("./data/dev_data/dev.json","./data/joint_bin/dev.json")
     # joint_process_binary("./data/test1_data/test1.json", "./data/joint_bin/test.json",is_predict=True)
 
-    role_segment_process_binary("./data/train_data/train.json", "./data/role_segment_bin/train.json")
-    role_segment_process_binary("./data/dev_data/dev.json","./data/role_segment_bin/dev.json")
+    # role_segment_process_binary("./data/train_data/train.json", "./data/role_segment_bin/train.json")
+    # role_segment_process_binary("./data/dev_data/dev.json","./data/role_segment_bin/dev.json")
 
     # data_val("./data/train_data/train.json")
     # data_val("./data/dev_data/dev.json")
@@ -612,10 +674,13 @@ if __name__ == '__main__':
     # index_output("./data/trigger/test.json" , "./output/trigger/checkpoint-best/test_predictions.json","./output/trigger/checkpoint-best/test_predictions_indexed.json" )
     
     # index_output("./data/role/dev.json" , "./output/role/checkpoint-best/eval_predictions.json","./output/role/checkpoint-best/eval_predictions_indexed.json" )
-    # index_output("./data/role/test.json" , "./output/role/checkpoint-best/test_predictions.json","./output/role/checkpoint-best/test_predictions_indexed.json" )
+    # index_output("./data/role/test.json" , "./output/role2/checkpoint-best/test_predictions.json","./output/role2/checkpoint-best/test_predictions_indexed.json" )
 
-    # index_output_bin("./data/role_segment_bin/dev.json" , "./output/role_segment_bin/checkpoint-best/eval_predictions.json","./output/role_segment_bin/checkpoint-best/eval_predictions_indexed.json" )
-    # index_output_bin("./data/role_segment_bin/test.json" , "./output/role_segment_bin/checkpoint-best/test_predictions.json","./output/role_segment_bin/checkpoint-best/test_predictions_indexed.json" )
+    # index_output_segment_bin("./data/role_segment_bin/dev.json" , "./output/role_segment_bin/checkpoint-best/eval_predictions.json","./output/role_segment_bin/checkpoint-best/eval_predictions_indexed.json" )
+    # index_output_segment_bin("./data/role_segment_bin/test.json" , "./output/role_segment_bin/checkpoint-best/test_predictions.json","./output/role_segment_bin/checkpoint-best/test_predictions_indexed.json" )
+
+    # index_output_bin("./data/role_bin/dev.json" , "./output/role_bin/checkpoint-best/eval_predictions.json","./output/role_bin/checkpoint-best/eval_predictions_indexed.json" )
+    # index_output_bin("./data/role_bin/test.json" , "./output/role_bin2/checkpoint-best/test_predictions.json","./output/role_bin2/checkpoint-best/test_predictions_indexed.json" )
 
     # convert_bio_to_segment("./output/trigger/checkpoint-best/test_predictions_indexed.json",\
     #     "./output/trigger/checkpoint-best/test_predictions_indexed_semgent_id.json")

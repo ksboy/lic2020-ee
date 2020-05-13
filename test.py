@@ -22,3 +22,5 @@ def quickSort(nums, left , right):
 
 quickSort([4,3,2,1],0,3)
     
+a=[1,2,3]
+a.sort()

@@ -241,7 +241,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                     if (
                         args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
-                        results, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev")
+                        results, _ , _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev")
                         for key, value in results.items():
                             tb_writer.add_scalar("eval_{}".format(key), value, global_step)
                     tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
@@ -350,8 +350,15 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         return s
 
     threshold = 0.5
-    preds = sigmoid(preds)> threshold # 1498*256*217
-    out_label_ids = sigmoid(out_label_ids) > threshold
+    logits = sigmoid(preds)
+    preds = logits > threshold # 1498*65
+
+    # 若所有类别对应的 logit 都没有超过阈值，则将 logit 最大的类别作为 label
+    for i in range(preds.shape[0]):
+        if sum(preds[i])==0:
+            preds[i][np.argmax(logits[i])]=True
+
+    # out_label_ids = sigmoid(out_label_ids) > threshold
 
     label_map = {i: label for i, label in enumerate(labels)}
 
@@ -368,7 +375,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         for j in range(out_label_ids.shape[1]):
             if preds[i, j]:
                 preds_list.append([i, j])
-                batch_preds_list[i].append([i,j])
+                batch_preds_list[i].append(label_map[j])
 
     nb_correct  = 0
     for out_label in tqdm(out_label_list, desc="Computing Metric"):
@@ -397,7 +404,8 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     for key in sorted(results.keys()):
         logger.info("  %s = %s", key, str(results[key]))
     
-    return results, batch_preds_list
+    # print(len(logits), len(logits[0]))
+    return results, batch_preds_list, logits.tolist()
 
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
@@ -733,7 +741,7 @@ def main():
         for checkpoint in checkpoints:
             model = model_class.from_pretrained(checkpoint)
             model.to(args.device)
-            result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=checkpoint)
+            result, predictions, logits = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=checkpoint)
             # Save results
             output_eval_results_file = os.path.join(checkpoint, "eval_results.txt")
             with open(output_eval_results_file, "w") as writer:
@@ -745,6 +753,12 @@ def main():
             for prediction in predictions:
                 results.append({'labels':prediction})
             write_file(results, output_eval_predictions_file)  
+            # Save logits
+            output_eval_logits_file = os.path.join(checkpoint, "eval_logits.json")
+            results = []
+            for logit in logits:
+                results.append({'logits':logit})
+            write_file(results, output_eval_logits_file) 
 
 
     if args.do_predict and args.local_rank in [-1, 0]:
@@ -752,7 +766,7 @@ def main():
         checkpoint = os.path.join(args.output_dir, 'checkpoint-best')
         model = model_class.from_pretrained(checkpoint)
         model.to(args.device)
-        result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
+        result, predictions, logits = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
         # Save results
         output_test_results_file = os.path.join(checkpoint, "test_results.txt")
         with open(output_test_results_file, "w") as writer:
@@ -763,7 +777,13 @@ def main():
         results = []
         for prediction in predictions:
             results.append({'labels':prediction})
-        write_file(results,output_test_predictions_file)      
+        write_file(results,output_test_predictions_file) 
+        # Save logits
+        output_test_logits_file = os.path.join(checkpoint, "test_logits.json")
+        results = []
+        for logit in logits:
+            results.append({'logits':logit})
+        write_file(results, output_test_logits_file)      
 
     return results
 

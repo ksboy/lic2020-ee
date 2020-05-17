@@ -27,7 +27,7 @@ def get_labels(path="./data/event_schema/event_schema.json", task='trigger', mod
                 labels.append("I-{}".format(event_type))
             else:
                 labels.append(event_type)
-        return labels
+        return remove_duplication(labels)
 
     elif task=='role':
         labels = []
@@ -42,7 +42,7 @@ def get_labels(path="./data/event_schema/event_schema.json", task='trigger', mod
                     labels.append("I-{}".format(role_type))
                 else:
                     labels.append(role_type)
-        return labels
+        return remove_duplication(labels)
         
     else:
         labels = []
@@ -59,7 +59,7 @@ def get_labels(path="./data/event_schema/event_schema.json", task='trigger', mod
                     labels.append("I-{}".format(role_type))
                 else:
                     labels.append(role_type)
-        return labels
+        return remove_duplication(labels)
 
 
 if __name__ == '__main__':

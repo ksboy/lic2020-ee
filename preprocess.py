@@ -1,12 +1,24 @@
 import json
 import os
 from utils import get_labels
+from postprocess import extract_result
 
 def write_file(datas, output_file):
     with open(output_file, 'w', encoding='utf-8') as f:
         for obj in datas:
-            json.dump(obj, f, ensure_ascii=False)
+            json.dump(obj, f, ensure_ascii=False, sort_keys=True)
             f.write("\n")
+
+def trigger_classify_file_remove_id(input_file, output_file):
+    rows = open(input_file, encoding='utf-8').read().splitlines()
+    results = []
+    for row in rows:
+        if len(row)==1: print(row)
+        row = json.loads(row)
+        row.pop("id")
+        row.pop("text")
+        results.append(row)
+    write_file(results,output_file)
 
 def trigger_classify_process(input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
@@ -441,13 +453,13 @@ def get_event_class(schema_file):
         labels.append(event_class)
     return labels
 
-def index_output(test_file, prediction_file, output_file):
+def index_output_bio_arg(test_file, prediction_file, output_file):
     tests = open(test_file, encoding='utf-8').read().splitlines()
     predictions = open(prediction_file, encoding='utf-8').read().splitlines()
     results = []
     index = 0
     max_length = 256-2
-    for test,prediction in zip(tests, predictions):
+    for test, prediction in zip(tests, predictions):
         index += 1
         test = json.loads(test)
         tokens = test.pop('tokens')
@@ -459,13 +471,23 @@ def index_output(test_file, prediction_file, output_file):
             print(labels, tokens)
             print(len(labels), len(tokens), index)
             break
-        test.update(prediction) 
 
+        args = extract_result(test["text"], labels)
+        arguments = []
+        for arg in args:
+            argument = {}
+            argument["role"] = arg["type"]
+            argument["argument_start_index"] = arg['start']
+            argument["argument"] =''.join(arg['text'])
+            arguments.append(argument)
+        
+        test.pop("labels")
+        test["arguments"] = arguments
         results.append(test)
     write_file(results, output_file)
 
+
 def index_output_segment_bin(test_file, prediction_file, output_file):
-    from utils_bi_ner_segment import get_labels
     label_list = get_labels(task='role', mode="classification")
     label_map =  {i: label for i, label in enumerate(label_list)}
 
@@ -517,8 +539,7 @@ def index_output_segment_bin(test_file, prediction_file, output_file):
         results.append(test)
     write_file(results, output_file)
 
-def index_output_bin(test_file, prediction_file, output_file):
-    from utils_bi_ner_segment import get_labels
+def index_output_bin_arg(test_file, prediction_file, output_file):
     label_list = get_labels(task='role', mode="classification")
     label_map =  {i: label for i, label in enumerate(label_list)}
 
@@ -548,7 +569,7 @@ def index_output_bin(test_file, prediction_file, output_file):
             role = label_map[arg[3]]
             sub_dict["role"]=role
             sub_dict["argument"]=argument
-            # sub_dict["argument_start_index"] = argument_start_index
+            sub_dict["argument_start_index"] = argument_start_index
             arguments.append(sub_dict)
         
         test["arguments"]= arguments
@@ -579,7 +600,6 @@ def index_output_bin(test_file, prediction_file, output_file):
 # ner_segment_bi 输入的预处理函数
 
 def convert_bio_to_segment(input_file, output_file):
-    from postprocess import extract_result
     lines = open(input_file, encoding='utf-8').read().splitlines()
     res = []
     for line in lines:
@@ -612,7 +632,59 @@ def convert_bio_to_segment(input_file, output_file):
             cur_line["end_labels"] = end_labels
             res.append(cur_line)
     write_file(res, output_file)
-        
+
+
+def convert_bio_to_label(input_file, output_file):
+    lines = open(input_file, encoding='utf-8').read().splitlines()
+    res = []
+    for line in lines:
+        line_json = json.loads(line)
+        labels = []
+        for label in line_json["labels"]:
+            if label.startswith("B-") and label[2:] not in labels:
+                labels.append(label[2:])
+        res.append({"labels":labels})
+    write_file(res, output_file)
+
+def compute_matric(label_file, pred_file):
+    label_lines = open(label_file, encoding='utf-8').read().splitlines()
+    pred_lines = open(pred_file, encoding='utf-8').read().splitlines()
+
+    labels = []
+    for i, line in enumerate(label_lines):
+        json_line = json.loads(line)
+        for label in json_line['labels']:
+            labels.append([i, label])
+    
+    preds = []
+    for i, line in enumerate(pred_lines):
+        json_line = json.loads(line)
+        for label in json_line['labels']:
+            preds.append([i, label])
+
+    nb_correct  = 0
+    for out_label in labels:
+        if out_label in preds:
+            nb_correct += 1
+            continue
+    nb_pred = len(preds)
+    nb_true = len(labels)
+    # print(nb_correct, nb_pred, nb_true)
+
+    p = nb_correct / nb_pred if nb_pred > 0 else 0
+    r = nb_correct / nb_true if nb_true > 0 else 0
+    f1 = 2 * p * r / (p + r) if p + r > 0 else 0
+    
+    print(p, r, f1)
+
+def get_num_of_arguments(input_file):
+    lines = open(input_file, encoding='utf-8').read().splitlines()
+    arg_count = 0
+    for line in lines:
+        line = json.loads(line)
+        for event in line["event_list"]:
+            arg_count += len(event["arguments"])
+    print(arg_count)
 
 def read_write(input_file, output_file):
     rows = open(input_file, encoding='utf-8').read().splitlines()
@@ -630,11 +702,35 @@ def read_write(input_file, output_file):
         results.append(row)
     write_file(results, output_file)
 
+def split_data(input_file, output_dir, num_split=5):
+    datas = open(input_file, encoding='utf-8').read().splitlines()
+    for i in range(num_split):
+        globals()["train_data"+str(i+1)] = []
+        globals()["dev_data"+str(i+1)] = []
+    for i, data in enumerate(datas):
+        cur = i % num_split + 1
+        for j in range(num_split):
+            if cur == j+1:
+                globals()["dev_data" + str(j + 1)].append(json.loads(data))
+            else:
+                globals()["train_data"+str(j + 1)].append(json.loads(data))
+    for i in range(num_split):
+        cur_dir = os.path.join(output_dir, str(i))
+        if not os.path.exists(cur_dir):
+            os.makedirs(cur_dir)
+        write_file(globals()["train_data"+str(i + 1)], os.path.join(cur_dir, "train.json"))
+        write_file(globals()["dev_data"+str(i + 1)], os.path.join(cur_dir, "dev.json"))
+
 
 if __name__ == '__main__':
-    trigger_classify_process("./data/train_data/train.json", "./data/trigger_classify/train.json")
-    trigger_classify_process("./data/dev_data/dev.json", "./data/trigger_classify/dev.json")
-    trigger_classify_process("./data/test1_data/test1.json", "./data/trigger_classify/test.json",is_predict=True)
+
+    # trigger_classify_file_remove_id("./data/trigger_classify/dev.json", "./data/trigger_classify/dev_without_id.json")
+
+    # split_data("./data/trigger_classify/train.json",  "./data/trigger_classify",  num_split=5)
+
+    # trigger_classify_process("./data/train_data/train.json", "./data/trigger_classify/train.json")
+    # trigger_classify_process("./data/dev_data/dev.json", "./data/trigger_classify/dev.json")
+    # trigger_classify_process("./data/test1_data/test1.json", "./data/trigger_classify/test.json",is_predict=True)
 
     # trigger_process_binary("./data/train_data/train.json", "./data/trigger_bin/train.json")
     # trigger_process_binary("./data/dev_data/dev.json","./data/trigger_bin/dev.json")
@@ -673,18 +769,24 @@ if __name__ == '__main__':
     # index_output("./data/trigger/dev.json" , "./output/trigger/checkpoint-best/eval_predictions.json","./output/trigger/checkpoint-best/eval_predictions_indexed.json" )
     # index_output("./data/trigger/test.json" , "./output/trigger/checkpoint-best/test_predictions.json","./output/trigger/checkpoint-best/test_predictions_indexed.json" )
     
-    # index_output("./data/role/dev.json" , "./output/role/checkpoint-best/eval_predictions.json","./output/role/checkpoint-best/eval_predictions_indexed.json" )
-    # index_output("./data/role/test.json" , "./output/role2/checkpoint-best/test_predictions.json","./output/role2/checkpoint-best/test_predictions_indexed.json" )
+    # index_output_bio_arg("./data/role/dev.json" , "./output/role2/checkpoint-best/eval_predictions.json","./output/role2/checkpoint-best/eval_predictions_labels.json" )
+    # index_output_bio_arg("./data/role/test.json" , "./output/role2/checkpoint-best/test_predictions.json","./output/role2/checkpoint-best/test_predictions_indexed.json" )
 
     # index_output_segment_bin("./data/role_segment_bin/dev.json" , "./output/role_segment_bin/checkpoint-best/eval_predictions.json","./output/role_segment_bin/checkpoint-best/eval_predictions_indexed.json" )
     # index_output_segment_bin("./data/role_segment_bin/test.json" , "./output/role_segment_bin/checkpoint-best/test_predictions.json","./output/role_segment_bin/checkpoint-best/test_predictions_indexed.json" )
 
-    # index_output_bin("./data/role_bin/dev.json" , "./output/role_bin/checkpoint-best/eval_predictions.json","./output/role_bin/checkpoint-best/eval_predictions_indexed.json" )
-    # index_output_bin("./data/role_bin/test.json" , "./output/role_bin2/checkpoint-best/test_predictions.json","./output/role_bin2/checkpoint-best/test_predictions_indexed.json" )
+    # index_output_bin_arg("./data/role_bin/dev.json" , "./output/role_bin2/checkpoint-best/eval_predictions.json","./output/role_bin2/checkpoint-best/eval_predictions_indexed.json" )
+    # index_output_bin_arg("./data/role_bin/test.json" , "./output/role_bin2/checkpoint-best/test_predictions.json","./output/role_bin2/checkpoint-best/test_predictions_indexed.json" )
 
     # convert_bio_to_segment("./output/trigger/checkpoint-best/test_predictions_indexed.json",\
     #     "./output/trigger/checkpoint-best/test_predictions_indexed_semgent_id.json")
 
+    # convert_bio_to_label("./output/trigger/checkpoint-best/eval_predictions.json",\
+    #      "./output/trigger/checkpoint-best/eval_predictions_labels.json")
+    # compute_matric("./data/trigger_classify/dev.json", "./output/trigger/checkpoint-best/eval_predictions_labels.json")
+
     # read_write("./output/eval_pred.json", "./results/eval_pred.json")
     # read_write("./results/test1.trigger.pred.json", "./results/paddle.trigger.json")
+
+    get_num_of_arguments("./results/test_pred_bin_segment.json")
 

@@ -3,7 +3,7 @@ TASK=trigger
 MODEL=/home/mhxia/whou/workspace/pretrained_models/chinese_roberta_wwm_large_ext_pytorch  #albert-xxlarge-v2/  #bert-large-uncased-wwm/
 DATA_DIR=./data/trigger_classify/
 SCHEMA=./data/event_schema/event_schema.json
-OUTPUT_DIR=./output/trigger_classify/
+OUTPUT_DIR=./output/trigger_classify/2/
 EVAL_BATCH_SIZE=64
 SEED=1
 

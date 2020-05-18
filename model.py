@@ -843,3 +843,143 @@ class BertForTokenBinaryClassificationWithTrigger(BertPreTrainedModel):
 
         return outputs  # (loss), scores, (hidden_states), (attentions)
 
+class BertForTokenBinaryClassificationWithTriggerAndEventType(BertPreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+
+        self.bert = BertModel(config)
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.start_classifier = nn.Linear(config.hidden_size + 65, config.num_labels)
+        self.end_classifier = nn.Linear(config.hidden_size + 65, config.num_labels)
+
+        self.init_weights()
+
+    # @add_start_docstrings_to_callable(BERT_INPUTS_DOCSTRING)
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        start_labels=None, # batch* num_class* seq_length
+        end_labels=None,
+        event_type=None,
+    ):
+        r"""
+        labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
+            Labels for computing the token classification loss.
+            Indices should be in ``[0, ..., config.num_labels - 1]``.
+
+    Returns:
+        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.BertConfig`) and inputs:
+        loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when ``labels`` is provided) :
+            Classification loss.
+        scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, config.num_labels)`)
+            Classification scores (before SoftMax).
+        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``config.output_hidden_states=True``):
+            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
+            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``config.output_attentions=True``):
+            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
+            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+
+    Examples::
+
+        from transformers import BertTokenizer, BertForTokenClassification
+        import torch
+
+        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        model = BertForTokenClassification.from_pretrained('bert-base-uncased')
+
+        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
+        labels = torch.tensor([1] * input_ids.size(1)).unsqueeze(0)  # Batch size 1
+        outputs = model(input_ids, labels=labels)
+
+        loss, scores = outputs[:2]
+
+        """
+
+        outputs = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=torch.zeros_like(token_type_ids),
+            # token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+        )
+
+        sequence_output = outputs[0]
+
+        # add triggrt embedding
+        for i in range(sequence_output.size(0)):
+            trigger_output=[]
+            for j in range(sequence_output.size(1)):
+                if token_type_ids[i][j]:
+                    trigger_output.append(sequence_output[i][j])
+            if trigger_output==[]: 
+                print("segment_id == none")
+                continue
+            trigger_output = torch.stack(trigger_output,dim=0)
+            trigger_output = torch.mean(trigger_output,dim=0)
+            sequence_output[i] += trigger_output
+        
+        ## add event_type
+        num_classes = 65
+        event_type =  F.one_hot(event_type, num_classes=num_classes).float()
+        seq_length = sequence_output.size(1)
+        event_type = event_type.unsqueeze(1).repeat(1,seq_length,1)
+        sequence_output =  torch.cat([sequence_output, event_type], axis=-1)
+
+
+        sequence_output = self.dropout(sequence_output)
+
+        start_logits = self.start_classifier(sequence_output)
+        end_logits = self.end_classifier(sequence_output)
+
+        outputs = ([start_logits, end_logits],) + outputs[2:]  # add hidden states and attention if they are here
+        if start_labels is not None and end_labels is not None:
+            # loss_fct = CrossEntropyLoss()
+            # loss_fct = FocalLoss(class_num=self.num_labels)
+            loss_fct = BCEWithLogitsLoss(reduction="none")
+            # Only keep active parts of the loss
+            if attention_mask is not None:
+                active_loss = attention_mask.view(-1) == 1
+                active_start_logits = start_logits.view(-1, self.num_labels)
+                active_end_logits = end_logits.view(-1, self.num_labels)
+
+                active_start_labels = start_labels.view(-1, self.num_labels)
+                active_end_labels = end_labels.view(-1, self.num_labels)
+                # attention_mask: 
+                # ignore_index: [cls], [sep]
+                # non_index: no label
+
+                # print(active_loss, active_loss.shape, \
+                #      active_logits,active_logits.shape,\
+                #      active_labels,active_labels.shape,\
+                #      labels, labels.shape)
+                #2048 2048*435 2048 8*256 
+                start_loss = loss_fct(active_start_logits, active_start_labels.float())
+                start_loss = start_loss * (active_loss.unsqueeze(-1))
+                start_loss = torch.sum(start_loss)/torch.sum(active_loss)
+
+                end_loss = loss_fct(active_end_logits, active_end_labels.float())
+                end_loss = end_loss * (active_loss.unsqueeze(-1))
+                end_loss = torch.sum(end_loss)/torch.sum(active_loss)
+
+
+            else:
+                start_loss = loss_fct(start_logits.view(-1, self.num_labels), start_labels.view(-1))
+                end_loss = loss_fct(end_logits.view(-1, self.num_labels), end_labels.view(-1))
+            outputs = (start_loss+ end_loss,) + () + outputs
+
+        return outputs  # (loss), scores, (hidden_states), (attentions)
+

@@ -727,6 +727,8 @@ if __name__ == '__main__':
     # trigger_classify_file_remove_id("./data/trigger_classify/dev.json", "./data/trigger_classify/dev_without_id.json")
 
     # split_data("./data/trigger_classify/train.json",  "./data/trigger_classify",  num_split=5)
+    split_data("./data/role_bin/train.json",  "./data/role_bin",  num_split=5)
+
 
     # trigger_classify_process("./data/train_data/train.json", "./data/trigger_classify/train.json")
     # trigger_classify_process("./data/dev_data/dev.json", "./data/trigger_classify/dev.json")
@@ -788,5 +790,5 @@ if __name__ == '__main__':
     # read_write("./output/eval_pred.json", "./results/eval_pred.json")
     # read_write("./results/test1.trigger.pred.json", "./results/paddle.trigger.json")
 
-    get_num_of_arguments("./results/test_pred_bin_segment.json")
+    # get_num_of_arguments("./results/test_pred_bin_segment.json")
 

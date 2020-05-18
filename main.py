@@ -32,6 +32,34 @@ def trigger_classify_labels_merge(input_file_list, output_file):
     
     write_file(labels, output_file)
 
+
+def trigger_classify_labels_merge(input_file_list, output_file):
+    num_fold = len(input_file_list)
+    labels_file_list= []
+    for input_file in input_file_list:
+        rows = open(input_file, encoding='utf-8').read().splitlines()
+        labels_file = [json.loads(row)["labels"] for row in rows]
+        labels_file_list.append(labels_file)
+    
+    num_samples = len(labels_file_list[0])
+    labels = []
+    for i in range(num_samples):
+        cur_all_labels = []
+        for labels_file in labels_file_list:
+            cur_all_labels.extend(labels_file[i])
+
+        cur_labels =[]
+        obj = collections.Counter(cur_all_labels)
+        for k,v in obj.items():
+            if v>= (num_fold+1)//2:
+                cur_labels.append(k)
+        if cur_labels ==[]:
+            # print(obj.most_common(1)[0][0])
+            cur_labels.append(obj.most_common(1)[0][0])
+        labels.append({"labels": cur_labels})
+    
+    write_file(labels, output_file)
+
 def trigger_classify_logits_merge_and_eval(input_file_list, output_file, label_file):
     labels = get_labels(task="trigger", mode="classify")
     label_map = {i: label for i, label in enumerate(labels)}
@@ -119,23 +147,25 @@ def compute_f1(preds_list, labels_list):
     return results
 
 if __name__ == "__main__":
-    # trigger_classify_labels_merge(input_file_list=[
-    #     "./output/trigger_classify/0/checkpoint-best/eval_predictions.json",
-    #     "./output/trigger_classify/1/checkpoint-best/eval_predictions.json",
-    #     "./output/trigger_classify/2/checkpoint-best/eval_predictions.json"],
-    #     output_file="./output/trigger_classify/merge/eval_predictions.json"
-    # )
-    # eval(pred_file="./output/trigger_classify/merge/eval_predictions_logits.json",\
-    #     label_file="./data/trigger_classify/dev.json",
-    #     )
-
-    trigger_classify_logits_merge_and_eval(input_file_list=[
-        "./output/trigger_classify/0/checkpoint-best/eval_logits.json",
-        "./output/trigger_classify/1/checkpoint-best/eval_logits.json",
-        "./output/trigger_classify/2/checkpoint-best/eval_logits.json"],
-        output_file="./output/trigger_classify/merge/eval_predictions_logits.json",
-        label_file="./data/trigger_classify/dev.json"
+    trigger_classify_labels_merge(input_file_list=[
+        "./output/trigger_classify/0/checkpoint-best/eval_predictions.json",
+        "./output/trigger_classify/1/checkpoint-best/eval_predictions.json",
+        "./output/trigger_classify/2/checkpoint-best/eval_predictions.json",
+        "./output/trigger_classify/3/checkpoint-best/eval_predictions.json",
+        "./output/trigger_classify/4/checkpoint-best/eval_predictions.json"],
+        output_file="./output/trigger_classify/merge/eval_predictions_labels.json"
     )
+    eval(pred_file="./output/trigger_classify/merge/eval_predictions_labels.json",\
+        label_file="./data/trigger_classify/dev.json",
+        )
+
+    # trigger_classify_logits_merge_and_eval(input_file_list=[
+    #     "./output/trigger_classify/0/checkpoint-best/eval_logits.json",
+    #     "./output/trigger_classify/1/checkpoint-best/eval_logits.json",
+    #     "./output/trigger_classify/2/checkpoint-best/eval_logits.json"],
+    #     output_file="./output/trigger_classify/merge/eval_predictions_logits.json",
+    #     label_file="./data/trigger_classify/dev.json"
+    # )
 
 
 

@@ -1,9 +1,9 @@
 MAX_LENGTH=256
 TASK=trigger
 MODEL=/home/mhxia/whou/workspace/pretrained_models/chinese_roberta_wwm_large_ext_pytorch  #albert-xxlarge-v2/  #bert-large-uncased-wwm/
-DATA_DIR=./data/trigger_classify/4/
+DATA_DIR=./data/trigger_classify_weighted/0/
 SCHEMA=./data/event_schema/event_schema.json
-OUTPUT_DIR=./output/trigger_classify/4/
+OUTPUT_DIR=./output/trigger_classify_weighted/0/
 BATCH_SIZE=8
 EVAL_BATCH_SIZE=64
 NUM_EPOCHS=20
@@ -13,7 +13,7 @@ WARMUP_STEPS=1000
 SEED=1
 LR=3e-5
 
-CUDA_VISIBLE_DEVICES=3 python3 run_classify.py \
+CUDA_VISIBLE_DEVICES=1 python3 run_classify.py \
 --task $TASK \
 --model_type bert \
 --model_name_or_path $MODEL \

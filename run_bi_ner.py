@@ -58,7 +58,7 @@ from model import BertForTokenClassificationWithDiceLoss, BertForTokenClassifica
 from utils import get_labels
 from utils_bi_ner import convert_examples_to_features, read_examples_from_file, convert_label_ids_to_onehot
 # from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
-from preprocess import write_file
+from utils import write_file
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -355,8 +355,10 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         return s
 
     threshold = 0.5
-    start_preds = sigmoid(start_preds)> threshold # 1498*256*217
-    end_preds = sigmoid(end_preds) > threshold
+    start_logits = sigmoid(start_preds)
+    start_preds = start_logits > threshold # 1498*256*217
+    end_logits = sigmoid(end_preds)
+    end_preds = end_logits > threshold
 
     # 1498*256*217
     sample_num, seq_length, num_labels=  start_out_label_ids.shape
@@ -427,7 +429,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     for key in sorted(results.keys()):
         logger.info("  %s = %s", key, str(results[key]))
     
-    return results, batch_preds_list
+    return results, batch_preds_list, start_logits, end_logits
 
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
@@ -775,7 +777,7 @@ def main():
         for checkpoint in checkpoints:
             model = model_class.from_pretrained(checkpoint)
             model.to(args.device)
-            result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=checkpoint)
+            result, predictions, start_logits, end_logits = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=checkpoint)
             # Save results
             output_eval_results_file = os.path.join(checkpoint, "eval_results.txt")
             with open(output_eval_results_file, "w") as writer:
@@ -786,7 +788,13 @@ def main():
             results = []
             for prediction in predictions:
                 results.append({'labels':prediction})
-            write_file(results, output_eval_predictions_file)  
+            write_file(results, output_eval_predictions_file)
+            # Save logits
+            output_eval_logits_file = os.path.join(checkpoint, "eval_logits.json")
+            results = []
+            for start_logit, end_logit in zip(start_logits, end_logits):
+                results.append({'start_logits':start_logit,"end_logits":end_logit })
+            write_file(results, output_eval_logits_file)   
 
 
     if args.do_predict and args.local_rank in [-1, 0]:
@@ -794,7 +802,7 @@ def main():
         checkpoint = os.path.join(args.output_dir, 'checkpoint-best')
         model = model_class.from_pretrained(checkpoint)
         model.to(args.device)
-        result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
+        result, predictions, start_logits, end_logits = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
         # Save results
         output_test_results_file = os.path.join(checkpoint, "test_results.txt")
         with open(output_test_results_file, "w") as writer:
@@ -805,7 +813,13 @@ def main():
         results = []
         for prediction in predictions:
             results.append({'labels':prediction})
-        write_file(results,output_test_predictions_file)      
+        write_file(results,output_test_predictions_file) 
+        # Save logits
+        output_test_logits_file = os.path.join(checkpoint, "test_logits.json")
+        results = []
+        for start_logit, end_logit in zip(start_logits, end_logits):
+            results.append({'start_logits':start_logit,"end_logits":end_logit })
+        write_file(results, output_test_logits_file)       
 
     return results
 

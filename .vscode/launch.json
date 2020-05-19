@@ -20,11 +20,11 @@
             "cwd": "${fileDirname}",
             "console": "integratedTerminal",
             "env": {
-                "CUDA_VISIBLE_DEVICES": "0"
+                "CUDA_VISIBLE_DEVICES": "2"
             },
             "args": [
                 "--task",
-                "role",
+                "trigger",
                 "--model_type",
                 "bert",
                 "--model_name_or_path",
@@ -34,14 +34,14 @@
                 "--evaluate_during_training",
                 "--eval_all_checkpoints",
                 "--data_dir",
-                "./data/role_segment_bin_event_type/",
+                "./data/trigger_classify_weighted/0/",
                 // "--overwrite_cache",
                 "--do_lower_case",
                 "--keep_accents",
                 "--schema",
                 "./data/event_schema/event_schema.json",
                 "--output_dir",
-                "./output/role_segment_bin_event_type/",
+                "./output/trigger_classify_weighted/0/",
                 "--overwrite_output_dir",
                 "--max_seq_length",
                 "256",

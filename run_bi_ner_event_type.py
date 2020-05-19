@@ -58,7 +58,7 @@ from model import BertForTokenClassificationWithDiceLoss, BertForTokenClassifica
 from utils import get_labels
 from utils_bi_ner_segment_event_type import convert_examples_to_features, read_examples_from_file, convert_label_ids_to_onehot
 # from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
-from preprocess import write_file
+from utils import write_file
 
 try:
     from torch.utils.tensorboard import SummaryWriter

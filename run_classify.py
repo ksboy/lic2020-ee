@@ -26,7 +26,7 @@ import numpy as np
 import torch
 from seqeval.metrics import f1_score, precision_score, recall_score
 from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset, WeightedRandomSampler, SubsetRandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
@@ -58,7 +58,7 @@ from utils import get_labels
 from utils_classify import convert_examples_to_features, read_examples_from_file, convert_label_ids_to_onehot
 
 # from utils_ner import convert_examples_to_features, get_labels, read_examples_from_file
-from preprocess import write_file
+from utils import write_file
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -96,13 +96,15 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 
-def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
+def train(args, train_dataset, all_weights, model, tokenizer, labels, pad_token_label_id):
     """ Train the model """
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter(log_dir=args.output_dir)
 
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
-    train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
+    # train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
+    train_sampler = WeightedRandomSampler(all_weights, num_samples= int(train_dataset.__len__()*2) ) \
+                                            if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size)
 
     if args.max_steps > 0:
@@ -298,7 +300,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
 
 
 def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""):
-    eval_dataset = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode=mode)
+    eval_dataset, _ = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode=mode)
 
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
     # Note that DistributedSampler samples randomly
@@ -364,19 +366,26 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
 
     out_label_list = []
     preds_list = []
+    out_label_list_per_class = [[] for _ in range(out_label_ids.shape[1])]
+    preds_list_per_class = [[] for _ in range(out_label_ids.shape[1])]
+
     batch_preds_list = [[] for _ in range(out_label_ids.shape[0])]
+
 
     for i in range(out_label_ids.shape[0]):
         for j in range(out_label_ids.shape[1]):
             if out_label_ids[i, j]:
+                out_label_list_per_class[j].append(i)
                 out_label_list.append([i, j])
 
     for i in range(out_label_ids.shape[0]):
         for j in range(out_label_ids.shape[1]):
             if preds[i, j]:
                 preds_list.append([i, j])
+                preds_list_per_class[j].append(i)
                 batch_preds_list[i].append(label_map[j])
 
+    # macro f1
     nb_correct  = 0
     for out_label in tqdm(out_label_list, desc="Computing Metric"):
         # for pred in preds_list:
@@ -391,14 +400,40 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
 
     p = nb_correct / nb_pred if nb_pred > 0 else 0
     r = nb_correct / nb_true if nb_true > 0 else 0
-    f1 = 2 * p * r / (p + r) if p + r > 0 else 0
+    macro_f1 = 2 * p * r / (p + r) if p + r > 0 else 0
+
+    # micro f1
+    f1_list = []
+    for i in trange(out_label_ids.shape[1]):
+        nb_correct  = 0
+        for out_label in tqdm(out_label_list_per_class[i], desc="Computing Metric"):
+            # for pred in preds_list:
+            #     if out_label==pred:
+            #         nb_correct+=1
+            if out_label in preds_list_per_class[i]:
+                nb_correct += 1
+                continue
+        nb_pred = len(out_label_list_per_class[i])
+        nb_true = len(preds_list_per_class[i])
+        # print(nb_correct, nb_pred, nb_true)
+
+        p = nb_correct / nb_pred if nb_pred > 0 else 0
+        r = nb_correct / nb_true if nb_true > 0 else 0
+        f1 = 2 * p * r / (p + r) if p + r > 0 else 0
+        f1_list.append(f1)
+    micro_f1 = sum(f1_list)/len(f1_list)
 
     results = {
         "loss": eval_loss,
         "precision": p,
         "recall": r,
-        "f1": f1,
+        "f1": micro_f1,
+        "micro_f1": micro_f1,
+        "macro_F1": macro_f1
+        # "f1_list": f1_list
     }
+    for i in range(len(labels)):
+        results[labels[i]] =  f1_list[i]
 
     logger.info("***** Eval results %s *****", prefix)
     for key in sorted(results.keys()):
@@ -447,9 +482,17 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
     all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
     all_label_ids = torch.tensor([convert_label_ids_to_onehot(f.label, labels) for f in features], dtype=torch.int)
+    # 样本权重
+    label_count = torch.tensor([191, 104, 26, 83, 32, 128, 51, 64, 225, 1242, 151, 299, 197, 300,\
+        154, 96, 63, 99, 69, 462, 325, 138, 2004, 145, 100, 109, 33, 63, 121, 65, 61, 298, 274, 134,\
+        79, 107, 827, 238, 727, 99, 105, 82, 177, 170, 268, 75, 287, 128, 48, 210, 80, 122, 110, 145,\
+        605, 356, 93, 82, 47, 87, 197, 67, 63, 254, 74], dtype=torch.float)
+    label_weight = label_count.sum()/label_count
+    label_weight += min(label_weight)*3
+    all_weights = torch.tensor([max([label_weight[sub_label] for sub_label in f.label]) for f in features], dtype=torch.float )
 
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
-    return dataset
+    return dataset, all_weights
 
 
 def main():
@@ -706,8 +749,8 @@ def main():
 
     # Training
     if args.do_train:
-        train_dataset = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode="train")
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer, labels, pad_token_label_id)
+        train_dataset, all_weights = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode="train")
+        global_step, tr_loss = train(args, train_dataset, all_weights,  model, tokenizer, labels, pad_token_label_id)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()

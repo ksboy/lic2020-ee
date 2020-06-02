@@ -5,6 +5,40 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Predict",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "cwd": "${fileDirname}",
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2"
+            },
+            "args": [
+                "--task",
+                "role",
+                "--model_type",
+                "bert",
+                "--model_name_or_path",
+                "/home/mhxia/whou/workspace/pretrained_models/chinese_roberta_wwm_large_ext_pytorch",
+                "--do_predict",
+                "--data_dir",
+                "./data/role_bin/test/",
+                "--do_lower_case",
+                "--keep_accents",
+                "--schema",
+                "./data/event_schema/event_schema.json",
+                "--output_dir",
+                "./output/role_bin_train_dev/0/",
+                "--max_seq_length",
+                "384",
+                "--per_gpu_eval_batch_size",
+                "32",
+                "--seed",
+                "1"
+            ]
+        },
+        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
@@ -13,7 +47,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Transformers",
+            "name": "Train",
             "type": "python",
             "request": "launch",
             "program": "${file}",

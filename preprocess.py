@@ -18,9 +18,13 @@ def trigger_classify_file_remove_id(input_file, output_file):
 def trigger_classify_process(input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
     results = []
+    count = 0
     for row in rows:
         if len(row)==1: print(row)
         row = json.loads(row)
+        count += 1
+        if "id" not in row:
+            row["id"]=count
         labels = []
         if is_predict: 
             results.append({"id":row["id"], "text":row["text"], "labels":labels})
@@ -32,7 +36,7 @@ def trigger_classify_process(input_file, output_file, is_predict=False):
         results.append({"id":row["id"], "text":row["text"], "labels":labels})
     write_file(results,output_file)
 
-def trigger_process(input_file, output_file, is_predict=False):
+def trigger_process_bio(input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
     results = []
     for row in rows:
@@ -96,7 +100,7 @@ def role_process(input_file, output_file, is_predict=False):
         results.append({"id":row["id"], "tokens":list(row["text"]), "labels":labels})
     write_file(results,output_file)
 
-def role_segment_process(input_file, output_file, is_predict=False):
+def role_process_segment(input_file, output_file, is_predict=False):
     rows = open(input_file, encoding='utf-8').read().splitlines()
     results = []
     len_text = []
@@ -137,9 +141,13 @@ def role_process_binary(input_file, output_file, is_predict=False):
     label_map = {label: i for i, label in enumerate(label_list)}
     rows = open(input_file, encoding='utf-8').read().splitlines()
     results = []
+    count = 0
     for row in rows:
         if len(row)==1: print(row)
         row = json.loads(row)
+        count += 1
+        if "id" not in row:
+            row["id"]=count
         start_labels = ['O']*len(row["text"]) 
         end_labels = ['O']*len(row["text"]) 
         arguments = []
@@ -172,7 +180,7 @@ def role_process_binary(input_file, output_file, is_predict=False):
         results.append({"id":row["id"], "tokens":list(row["text"]), "start_labels":start_labels, "end_labels":end_labels, "arguments":arguments})
     write_file(results,output_file)
 
-def role_segment_process_binary(input_file, output_file, is_predict=False):
+def role_process_segment_binary(input_file, output_file, is_predict=False):
     label_list = get_labels(task= "role", mode="classification")
     label_map = {label: i for i, label in enumerate(label_list)}
     rows = open(input_file, encoding='utf-8').read().splitlines()
@@ -614,11 +622,13 @@ if __name__ == '__main__':
     # trigger_classify_file_remove_id("./data/trigger_classify/dev.json", "./data/trigger_classify/dev_without_id.json")
 
     # split_data("./data/trigger_classify/train.json",  "./data/trigger_classify",  num_split=5)
-    # split_data("./data/role_bin/train.json",  "./data/role_bin",  num_split=5)
+    # split_data("./data/role_bin_train_dev/train_dev.json",  "./data/role_bin_train_dev",  num_split=7)
+
+    # trigger_process_bio("./data/train_data/train.json", "./data/trigger/train.json")
 
     # trigger_classify_process("./data/train_data/train.json", "./data/trigger_classify/train.json")
     # trigger_classify_process("./data/dev_data/dev.json", "./data/trigger_classify/dev.json")
-    # trigger_classify_process("./data/test1_data/test1.json", "./data/trigger_classify/test.json",is_predict=True)
+    # trigger_classify_process("./data/test2_data/test2.json", "./data/trigger_classify/test/test.json", is_predict=True)
 
     # trigger_process_binary("./data/train_data/train.json", "./data/trigger_bin/train.json")
     # trigger_process_binary("./data/dev_data/dev.json","./data/trigger_bin/dev.json")
@@ -626,19 +636,18 @@ if __name__ == '__main__':
 
     # role_process_binary("./data/train_data/train.json", "./data/role_bin/train.json")
     # role_process_binary("./data/dev_data/dev.json","./data/role_bin/dev.json")
-    # role_process_binary("./data/test1_data/test1.json", "./data/role_bin/test.json",is_predict=True)
+    # role_process_binary("./data/test2_data/test2.json", "./data/role_bin/test/test.json",is_predict=True)
 
-    # role_segment_process("./data/train_data/train.json", "./data/role_segment/train.json")
-    # role_segment_process("./data/dev_data/dev.json","./data/role_segment/dev.json")
-    # role_segment_process("./data/test1_data/test1.json", "./data/role_segment/test.json",is_predict=True)
+    # role_process_segment("./data/train_data/train.json", "./data/role_segment/train.json")
+    # role_process_segment("./data/dev_data/dev.json","./data/role_segment/dev.json")
+    # role_process_segment("./data/test1_data/test1.json", "./data/role_segment/test.json",is_predict=True)
+
+    # role_process_segment_binary("./data/train_data/train.json", "./data/role_segment_bin/train.json")
+    # role_process_segment_binary("./data/dev_data/dev.json","./data/role_segment_bin/dev.json")
 
     # joint_process_binary("./data/train_data/train.json", "./data/joint_bin/train.json")
     # joint_process_binary("./data/dev_data/dev.json","./data/joint_bin/dev.json")
     # joint_process_binary("./data/test1_data/test1.json", "./data/joint_bin/test.json",is_predict=True)
-
-    # role_segment_process_binary("./data/train_data/train.json", "./data/role_segment_bin/train.json")
-    # role_segment_process_binary("./data/dev_data/dev.json","./data/role_segment_bin/dev.json")
-
 
     # event_class_list = get_event_class("./data/event_schema/event_schema.json")
     # for event_class in event_class_list:
@@ -651,7 +660,7 @@ if __name__ == '__main__':
     # index_output_bio_trigger("./data/trigger/test.json" , "./output/trigger/checkpoint-best/test_predictions.json","./output/trigger/checkpoint-best/test_predictions_indexed.json" )
     
     # index_output_bin_trigger("./data/trigger_classify/dev.json" , "./output/trigger_classify/merge/eval_predictions_labels.json","./output/trigger_classify/merge/eval_predictions_indexed_labels.json" )
-    # index_output_bin_trigger("./data/trigger_classify/test.json" , "./output/trigger_classify/merge/test_predictions_labels.json","./output/trigger_classify/merge/test_predictions_indexed_labels.json" )
+    index_output_bin_trigger("./data/trigger_classify/test/test.json" , "./output/trigger_classify/merge/test2_predictions_labels.json","./output/trigger_classify/merge/test2_predictions_indexed_labels.json" )
 
     # index_output_bio_arg("./data/role/dev.json" , "./output/role/checkpoint-best/eval_predictions.json","./output/role/checkpoint-best/eval_predictions_labels.json" )
     # index_output_bio_arg("./data/role/test.json" , "./output/role/checkpoint-best/test_predictions.json","./output/role/checkpoint-best/test_predictions_indexed.json" )
@@ -660,7 +669,7 @@ if __name__ == '__main__':
     # index_output_segment_bin("./data/role_segment_bin/test.json" , "./output/role_segment_bin/checkpoint-best/test_predictions.json","./output/role_segment_bin/checkpoint-best/test_predictions_indexed.json" )
 
     # index_output_bin_arg("./data/role_bin/dev.json" , "./output/role_bin/merge/eval_predictions_labels.json","./output/role_bin/merge/eval_predictions_indexed_labels.json" )
-    # index_output_bin_arg("./data/role_bin/test.json" , "./output/role_bin/merge/test_predictions_labels.json","./output/role_bin/merge/test_predictions_indexed_labels.json" )
+    index_output_bin_arg("./data/role_bin/test/test.json" , "./output/role_bin/merge/test2_predictions_labels.json","./output/role_bin/merge/test2_predictions_indexed_labels.json" )
 
     # convert_bio_to_segment("./output/trigger/checkpoint-best/test_predictions_indexed.json",\
     #     "./output/trigger/checkpoint-best/test_predictions_indexed_semgent_id.json")
@@ -669,4 +678,4 @@ if __name__ == '__main__':
     #      "./output/trigger/checkpoint-best/eval_predictions_labels.json")
     # compute_matric("./data/trigger_classify/dev.json", "./output/trigger/checkpoint-best/eval_predictions_labels.json")
 
-
+    pass

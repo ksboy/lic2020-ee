@@ -4,7 +4,7 @@ MODEL=/home/mhxia/whou/workspace/pretrained_models/chinese_roberta_wwm_large_ext
 DATA_DIR=./data/role_bin_train_dev/0/
 SCHEMA=./data/event_schema/event_schema.json
 OUTPUT_DIR=./output/role_bin_train_dev/0/
-BATCH_SIZE=6
+BATCH_SIZE=4
 EVAL_BATCH_SIZE=64
 NUM_EPOCHS=20
 SAVE_STEPS=300
@@ -13,7 +13,7 @@ WARMUP_STEPS=1000
 SEED=1
 LR=3e-5
 
-CUDA_VISIBLE_DEVICES=3 python3 run_bi_ner.py \
+CUDA_VISIBLE_DEVICES=0,1 python3 run_bi_ner.py \
 --task $TASK \
 --model_type bert \
 --model_name_or_path $MODEL \

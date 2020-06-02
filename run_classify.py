@@ -103,7 +103,7 @@ def train(args, train_dataset, all_weights, model, tokenizer, labels, pad_token_
 
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
     # train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
-    train_sampler = WeightedRandomSampler(all_weights, num_samples= int(train_dataset.__len__()*2) ) \
+    train_sampler = WeightedRandomSampler(all_weights, num_samples= int(train_dataset.__len__()*1) ) \
                                             if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size)
 
@@ -282,7 +282,7 @@ def train(args, train_dataset, all_weights, model, tokenizer, labels, pad_token_
                         torch.save(args, os.path.join(output_dir, "training_args.bin"))
                         logger.info("Saving model checkpoint to %s", output_dir)
 
-                        torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
+                        # torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
                         torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
                         logger.info("Saving optimizer and scheduler states to %s", output_dir)
 
@@ -483,14 +483,15 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
     all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
     all_label_ids = torch.tensor([convert_label_ids_to_onehot(f.label, labels) for f in features], dtype=torch.int)
     # 样本权重
-    label_count = torch.tensor([191, 104, 26, 83, 32, 128, 51, 64, 225, 1242, 151, 299, 197, 300,\
-        154, 96, 63, 99, 69, 462, 325, 138, 2004, 145, 100, 109, 33, 63, 121, 65, 61, 298, 274, 134,\
-        79, 107, 827, 238, 727, 99, 105, 82, 177, 170, 268, 75, 287, 128, 48, 210, 80, 122, 110, 145,\
-        605, 356, 93, 82, 47, 87, 197, 67, 63, 254, 74], dtype=torch.float)
-    label_weight = label_count.sum()/label_count
-    label_weight += min(label_weight)*3
-    all_weights = torch.tensor([max([label_weight[sub_label] for sub_label in f.label]) for f in features], dtype=torch.float )
-
+    # label_count = torch.tensor([191, 104, 26, 83, 32, 128, 51, 64, 225, 1242, 151, 299, 197, 300,\
+    #     154, 96, 63, 99, 69, 462, 325, 138, 2004, 145, 100, 109, 33, 63, 121, 65, 61, 298, 274, 134,\
+    #     79, 107, 827, 238, 727, 99, 105, 82, 177, 170, 268, 75, 287, 128, 48, 210, 80, 122, 110, 145,\
+    #     605, 356, 93, 82, 47, 87, 197, 67, 63, 254, 74], dtype=torch.float)
+    # label_weight = label_count.sum()/label_count
+    # label_weight += min(label_weight)*3
+    # all_weights = torch.tensor([max([label_weight[sub_label] for sub_label in f.label]) for f in features], dtype=torch.float )
+    all_weights = []
+    
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
     return dataset, all_weights
 
@@ -811,18 +812,18 @@ def main():
         model.to(args.device)
         result, predictions, logits = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
         # Save results
-        output_test_results_file = os.path.join(checkpoint, "test_results.txt")
+        output_test_results_file = os.path.join(checkpoint, "test2_results.txt")
         with open(output_test_results_file, "w") as writer:
             for key in sorted(result.keys()):
                 writer.write("{} = {}\n".format(key, str(result[key])))
         # Save predictions
-        output_test_predictions_file = os.path.join(checkpoint, "test_predictions.json")
+        output_test_predictions_file = os.path.join(checkpoint, "test2_predictions.json")
         results = []
         for prediction in predictions:
             results.append({'labels':prediction})
         write_file(results,output_test_predictions_file) 
         # Save logits
-        output_test_logits_file = os.path.join(checkpoint, "test_logits.json")
+        output_test_logits_file = os.path.join(checkpoint, "test2_logits.json")
         results = []
         for logit in logits:
             results.append({'logits':logit})

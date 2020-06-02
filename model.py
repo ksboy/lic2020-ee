@@ -92,18 +92,18 @@ class BertForSequenceMultiLabelClassification(BertPreTrainedModel):
 
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         
-        label_count = torch.tensor([191, 104, 26, 83, 32, 128, 51, 64, 225, 1242, 151, 299, 197, 300,\
-            154, 96, 63, 99, 69, 462, 325, 138, 2004, 145, 100, 109, 33, 63, 121, 65, 61, 298, 274, 134,\
-            79, 107, 827, 238, 727, 99, 105, 82, 177, 170, 268, 75, 287, 128, 48, 210, 80, 122, 110, 145,\
-            605, 356, 93, 82, 47, 87, 197, 67, 63, 254, 74], dtype=torch.float)
-        label_weight = label_count.sum()/label_count
-        label_weight += min(label_weight)*3
-        label_weight /= min(label_weight).clone()
-        label_weight= label_weight.cuda()
+        # label_count = torch.tensor([191, 104, 26, 83, 32, 128, 51, 64, 225, 1242, 151, 299, 197, 300,\
+        #     154, 96, 63, 99, 69, 462, 325, 138, 2004, 145, 100, 109, 33, 63, 121, 65, 61, 298, 274, 134,\
+        #     79, 107, 827, 238, 727, 99, 105, 82, 177, 170, 268, 75, 287, 128, 48, 210, 80, 122, 110, 145,\
+        #     605, 356, 93, 82, 47, 87, 197, 67, 63, 254, 74], dtype=torch.float)
+        # label_weight = label_count.sum()/label_count
+        # label_weight += min(label_weight)*3
+        # label_weight /= min(label_weight).clone()
+        # label_weight= label_weight.cuda()
 
         if labels is not None:
-            
-            loss_fct = BCEWithLogitsLoss(weight=label_weight)
+            loss_fct = BCEWithLogitsLoss()
+            # loss_fct = BCEWithLogitsLoss(weight=label_weight)
             loss = loss_fct(logits, labels.float())
             outputs = (loss,) + outputs
 

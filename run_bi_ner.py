@@ -241,7 +241,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                     if (
                         args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
-                        results, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev")
+                        results, _, _, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev")
                         for key, value in results.items():
                             tb_writer.add_scalar("eval_{}".format(key), value, global_step)
                     tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
@@ -429,7 +429,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     for key in sorted(results.keys()):
         logger.info("  %s = %s", key, str(results[key]))
     
-    return results, batch_preds_list, start_logits, end_logits
+    return results, batch_preds_list, start_logits.tolist(), end_logits.tolist()
 
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
@@ -479,8 +479,8 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
-    all_start_label_ids = torch.tensor([convert_label_ids_to_onehot(f.start_label_ids, labels) for f in features], dtype=torch.int)
-    all_end_label_ids = torch.tensor([convert_label_ids_to_onehot(f.end_label_ids, labels) for f in features], dtype=torch.int)
+    all_start_label_ids = torch.tensor([convert_label_ids_to_onehot(f.start_label_ids, labels) for f in features], dtype=torch.int8)
+    all_end_label_ids = torch.tensor([convert_label_ids_to_onehot(f.end_label_ids, labels) for f in features], dtype=torch.int8)
 
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_start_label_ids, all_end_label_ids)
     return dataset
@@ -804,22 +804,22 @@ def main():
         model.to(args.device)
         result, predictions, start_logits, end_logits = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
         # Save results
-        output_test_results_file = os.path.join(checkpoint, "test_results.txt")
+        output_test_results_file = os.path.join(checkpoint, "test3_results.txt")
         with open(output_test_results_file, "w") as writer:
             for key in sorted(result.keys()):
                 writer.write("{} = {}\n".format(key, str(result[key])))
         # Save predictions
-        output_test_predictions_file = os.path.join(checkpoint, "test_predictions.json")
+        output_test_predictions_file = os.path.join(checkpoint, "test3_predictions.json")
         results = []
         for prediction in predictions:
             results.append({'labels':prediction})
         write_file(results,output_test_predictions_file) 
         # Save logits
-        output_test_logits_file = os.path.join(checkpoint, "test_logits.json")
+        output_test_logits_file = os.path.join(checkpoint, "test3_logits.json")
         results = []
         for start_logit, end_logit in zip(start_logits, end_logits):
             results.append({'start_logits':start_logit,"end_logits":end_logit })
-        write_file(results, output_test_logits_file)       
+        # write_file(results, output_test_logits_file)       
 
     return results
 

@@ -257,7 +257,7 @@ def schema_analysis(path="./data/event_schema/event_schema.json"):
     for argument in argument_duplicate:
         print(argument_map[argument])
 
-    return argument_map, argument_unique, argument_duplicate
+    return argument_map
 
 
 if __name__ == '__main__':

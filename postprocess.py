@@ -288,6 +288,65 @@ def predict_data_process_bin(trigger_file, role_file, schema_file, save_path):
     pred_ret = [json.dumps(r, ensure_ascii=False) for r in pred_ret]
     write_by_lines(save_path, pred_ret)
 
+## trigger-bin + role-bin + 以role为准
+def predict_data_process_bin2(trigger_file, role_file, schema_file, save_path):
+    """predict_data_process"""
+    from utils import schema_analysis
+    argument_map= schema_analysis()
+
+    pred_ret = []
+    trigger_datas = read_by_lines(trigger_file)
+    role_datas = read_by_lines(role_file)
+    schema_datas = read_by_lines(schema_file)
+    schema = {}
+    schema_reverse = {}
+    for s in schema_datas:
+        d_json = json.loads(s)
+        schema[d_json["event_type"]] = [r["role"] for r in d_json["role_list"]]
+        schema_reverse=[]
+    # 将role数据进行处理
+    sent_role_mapping = {}
+    for d in role_datas:
+        d_json = json.loads(d)
+        arguments =d_json["arguments"]
+        role_ret = {}
+        for r in arguments:
+            role_type = r["role"]
+            if role_type not in role_ret:
+                role_ret[role_type] = []
+            role_ret[role_type].append(u"".join(r["argument"]))
+        sent_role_mapping[d_json["id"]] = role_ret
+
+    for d in trigger_datas:
+        d_json = json.loads(d)
+        pred_event_types = d_json["labels"]
+        event_list = []
+        
+        for role_type, ags in sent_role_mapping[d_json["id"]].items():
+            for event_type in pred_event_types:
+                role_list = schema[event_type]
+                if role_type not in role_list:
+                    event_type = argument_map
+                    pred_event_types.append
+                    continue
+                for arg in ags:
+                    # 一点小trick
+                    if len(arg) == 1: continue
+                    arguments.append({"role": role_type, "argument": arg})
+            
+
+            event = {"event_type": event_type, "arguments": arguments}
+            event_list.append(event)
+
+
+        pred_ret.append({
+            "id": d_json["id"],
+            "text": d_json["text"],
+            "event_list": event_list
+        })
+    pred_ret = [json.dumps(r, ensure_ascii=False) for r in pred_ret]
+    write_by_lines(save_path, pred_ret)
+
 def merge(input_file, output_file):
     lines = open(input_file, encoding='utf-8').read().splitlines()
     res =[]
@@ -328,10 +387,10 @@ if __name__ == "__main__":
     #     save_path =  "./results/test_pred_role_bin_merge.json")
 
     predict_data_process_bin(
-        trigger_file= "./output/trigger_classify/merge/test_predictions_indexed_labels.json", \
-        role_file = "./output/role_bin/merge/test_predictions_indexed_labels.json", \
+        trigger_file= "./output/trigger_classify/merge/test2_predictions_indexed_labels.json", \
+        role_file = "./output/role_bin/merge/test2_predictions_indexed_labels.json", \
         schema_file = "./data/event_schema/event_schema.json", \
-        save_path =  "./results/test_pred_trigger_bin_role_bin_merge.json")
+        save_path =  "./results/test2_pred_trigger_bin_role_bin_merge_2.json")
 
     # merge("./output/role_segment_bin/checkpoint-best/eval_predictions_indexed.json",\
     #       "./results/eval_pred_bi_segment.json")

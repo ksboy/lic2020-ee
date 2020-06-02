@@ -1,13 +1,13 @@
-MAX_LENGTH=384
-TASK=role
+MAX_LENGTH=256
+TASK=trigger
 MODEL=/home/mhxia/whou/workspace/pretrained_models/chinese_roberta_wwm_large_ext_pytorch  #albert-xxlarge-v2/  #bert-large-uncased-wwm/
-DATA_DIR=./data/role_bin/test3/
+DATA_DIR=./data/trigger_classify/test/
 SCHEMA=./data/event_schema/event_schema.json
-OUTPUT_DIR=./output/role_bin_train_dev/5/
+OUTPUT_DIR=./output/trigger_classify/4/
 EVAL_BATCH_SIZE=32
 SEED=1
 
-CUDA_VISIBLE_DEVICES=1 python3 run_bi_ner.py \
+CUDA_VISIBLE_DEVICES=3 python3 run_classify.py \
 --task $TASK \
 --model_type bert \
 --model_name_or_path $MODEL \

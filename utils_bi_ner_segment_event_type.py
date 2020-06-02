@@ -136,8 +136,11 @@ def convert_examples_to_features(
         for word, start_label, end_label, segment_id in zip(example.words, example.start_labels, example.end_labels, example.segment_ids):
             word_tokens = tokenizer.tokenize(word)
             tokens.extend(word_tokens)
+            if len(word_tokens)==1:
+                tokens.extend(word_tokens)
             if len(word_tokens)>1: 
-                # print(word,">1") # 没有
+                print(word,">1") 
+                tokens.extend(word_tokens[:1])
                 pass
             if len(word_tokens)<1: 
                 # print(word,"<1") 基本都是空格

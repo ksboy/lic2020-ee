@@ -26,7 +26,7 @@ def role_bin_ner_labels_merge(input_file_list, output_file):
         cur_labels =[]
         obj = collections.Counter(cur_all_labels)
         for k,v in obj.items():
-            if v>= (num_fold+1)//2:
+            if v>= 3:
                 cur_labels.append(list(map(int, k.split())))
         if cur_labels==[] and len(obj)!=0:
             k = obj.most_common(1)[0][0]
@@ -54,7 +54,8 @@ def trigger_classify_labels_merge(input_file_list, output_file):
         cur_labels =[]
         obj = collections.Counter(cur_all_labels)
         for k,v in obj.items():
-            if v>= (num_fold+1)//2:
+            # (num_fold+1)//2:
+            if v>=2: 
                 cur_labels.append(k)
         if cur_labels ==[]:
             # print(obj.most_common(1)[0][0])
@@ -169,12 +170,11 @@ def compute_f1(preds_list, labels_list):
 
 if __name__ == "__main__":
     trigger_classify_labels_merge(input_file_list=[
-        "./output/trigger_classify/0/checkpoint-best/test_predictions.json",
-        "./output/trigger_classify/1/checkpoint-best/test_predictions.json",
-        "./output/trigger_classify/2/checkpoint-best/test_predictions.json",
-        "./output/trigger_classify/3/checkpoint-best/test_predictions.json",
-        "./output/trigger_classify/4/checkpoint-best/test_predictions.json"],
-        output_file="./output/trigger_classify/merge/test_predictions_labels.json"
+        "./output/trigger_classify/0/checkpoint-best/test2_predictions.json",
+        "./output/trigger_classify/1/checkpoint-best/test2_predictions.json",
+        "./output/trigger_classify/2/checkpoint-best/test2_predictions.json",
+        "./output/trigger_classify/3/checkpoint-best/test2_predictions.json"],
+        output_file="./output/trigger_classify/merge/test2_predictions_labels.json"
     )
     # eval_trigger(pred_file="./output/trigger_classify/merge/eval_predictions_labels.json",\
     #     label_file="./data/trigger_classify/dev.json",
@@ -190,14 +190,15 @@ if __name__ == "__main__":
     #     label_file="./data/trigger_classify/dev.json"
     # )
 
-    # role_bin_ner_labels_merge(input_file_list=[
-    #     "./output/role_bin/0/checkpoint-best/test_predictions.json",
-    #     "./output/role_bin/1/checkpoint-best/test_predictions.json",
-    #     "./output/role_bin/2/checkpoint-best/test_predictions.json",
-    #     "./output/role_bin/3/checkpoint-best/test_predictions.json",
-    #     "./output/role_bin/4/checkpoint-best/test_predictions.json"],
-    #     output_file="./output/role_bin/merge/test_predictions_labels.json"
-    # )
+    role_bin_ner_labels_merge(input_file_list=[
+        "./output/role_bin_train_dev/0/checkpoint-best/test_predictions2.json",
+        "./output/role_bin_train_dev/2/checkpoint-best/test_predictions2.json",
+        "./output/role_bin_train_dev/3/checkpoint-best/test_predictions2.json",
+        "./output/role_bin_train_dev/4/checkpoint-best/test_predictions2.json",
+        "./output/role_bin_train_dev/5/checkpoint-best/test_predictions2.json",
+        "./output/role_bin_train_dev/6/checkpoint-best/test_predictions2.json"],
+        output_file="./output/role_bin/merge/test2_predictions_labels.json"
+    )
     # eval_trigger(pred_file="./output/role_bin/merge/eval_predictions_indexed_labels.json",\
     #     label_file="./data/role_bin/dev.json",
     #     )

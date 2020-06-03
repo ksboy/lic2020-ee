@@ -12,10 +12,10 @@
 ### baseline
 pipeline方式：NER方式提取所有的触发词，NER方式提取所有的事件元素，然后根据event_schema匹配触发词和事件元素。
 
-实验结果：
-dev-trigger: f1=0.86427 precision=0.85655 recall=0.87921
-dev-role:    f1=0.62321 precision=0.58821 recall=0.67439
-test:        f1=0.808   precision=0.836 recall=0.782 
+实验结果：  
+dev-trigger: f1=0.86427 precision=0.85655 recall=0.87921  
+dev-role:    f1=0.62321 precision=0.58821 recall=0.67439  
+test:        f1=0.808   precision=0.836 recall=0.782  
 
 ### 事件类型分类
 由于此次比赛只关注事件类型，并且同一文本中相同类型的事件合并不会影响评测结果；对于任务1，并不需要提取触发词。因此除了NER方式，还可以采用**多标签分类**的方法判断事件类型（采用sigmoid激活函数）。
@@ -29,18 +29,18 @@ test:        f1=0.808   precision=0.836 recall=0.782
 
 这里有一个小的trick：当多标签分类结果若为空时，则选择score最大的标签，带来了微小的提升。
 
-我们还尝试了重采样 WeightedRandomSampler，但是 recall 很低。最终没有采用。
-macro_F1 = 0.930539826349566
-micro_f1 = 0.928857823783912
-precision = 1.0
-recall = 0.8823529411764706
+我们还尝试了重采样 WeightedRandomSampler，但是 recall 很低。最终没有采用。  
+macro_F1 = 0.930539826349566  
+micro_f1 = 0.928857823783912  
+precision = 1.0  
+recall = 0.8823529411764706  
 
 
 模型融合时：我们也测试了两种方法，logits平均和labels投票，结果相差不大。
 
-基于多标签分类的模型融合结果：
-5-merge-labels: {'precision': 0.9555555555555556, 'recall': 0.96016898008449, 'f1': 0.9578567128236003}
-5-merge-logits: {'precision': 0.9577804583835947, 'recall': 0.9583584791792396, 'f1': 0.9580693815987934}
+基于多标签分类的模型融合结果：  
+5-merge-labels: {'precision': 0.9555555555555556, 'recall': 0.96016898008449, 'f1': 0.9578567128236003}  
+5-merge-logits: {'precision': 0.9577804583835947, 'recall': 0.9583584791792396, 'f1': 0.9580693815987934}  
 
 
 ### 事件元素提取
@@ -85,12 +85,12 @@ recall很低，最后放弃了第一种思路。
 
 采用pipeline方式：多标签分类得到事件类型，采用 start-end 标注方式提取所有的事件元素，然后根据event_schema匹配触发词和事件元素。
 
-test1结果：precision=0.847 recall=0.842	f1=0.844
-test1排名：28
-test2结果：
-test2排名:20
+test1结果：precision=0.847 recall=0.842	f1=0.844  
+test1排名：28  
+test2结果： 
+test2排名:20  
 
 ## 参考文献
 
-[1] Wei Z, Su J, Wang Y, et al. A Novel Hierarchical Binary Tagging Framework for Joint Extraction of Entities and Relations[J]. arXiv: Computation and Language, 2019.
+[1] Wei Z, Su J, Wang Y, et al. A Novel Hierarchical Binary Tagging Framework for Joint Extraction of Entities and Relations[J]. arXiv: Computation and Language, 2019.  
 [2] Yang S, Feng D, Qiao L, et al. Exploring Pre-trained Language Models for Event Extraction and Generation[C]. meeting of the association for computational linguistics, 2019: 5284-5294.
